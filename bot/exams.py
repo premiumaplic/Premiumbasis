@@ -75,12 +75,14 @@ def apply_decision(con, student_id: int, stage, passed: bool, path: str | None, 
     return "moved"
 
 
-def maybe_advance_group(con, group, stage, passed: int, total: int) -> object | None:
+def maybe_advance_group(con, group, stage, passed: int, total: int, on: date | None = None) -> object | None:
     """Если сдала хотя бы половина — группа переходит на следующую станцию (не на развилке)."""
     if total == 0 or passed * 2 < total or progress.is_fork(con, stage):
         return None
     nxt = progress.next_stage(con, stage)
     if nxt is None or group["stage_id"] != stage["id"]:
         return None
-    con.execute("UPDATE groups SET stage_id = ? WHERE id = ?", (nxt["id"], group["id"]))
+    # экзамены новой станции считаются от дня этого экзамена
+    con.execute("UPDATE groups SET stage_id = ?, stage_start = ? WHERE id = ?",
+                (nxt["id"], (on or date.today()).isoformat(), group["id"]))
     return nxt

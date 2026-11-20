@@ -117,11 +117,18 @@ HEADER = {
 }
 
 
+def anchor(g) -> date:
+    """С какого дня группа идёт по текущей станции (отсюда — недели и экзамены)."""
+    keys = g.keys() if hasattr(g, "keys") else g
+    value = g["stage_start"] if "stage_start" in keys and g["stage_start"] else g["start_date"]
+    return date.fromisoformat(value)
+
+
 def group_header(g, lang: str = "ru", on: date | None = None) -> str:
     """«Группа 10-А · Курс A1 · неделя 5 из 8 · экзамен 14 декабря»"""
     on = on or today()
     words = HEADER[lang]
-    start = date.fromisoformat(g["start_date"])
+    start = anchor(g)
     parts = [f"{words['group']} {g['name']}"]
     stage_name = g["stage_uz" if lang == "uz" else "stage_ru"]
     parts.append(stage_name or g["subject_uz" if lang == "uz" else "subject_ru"])

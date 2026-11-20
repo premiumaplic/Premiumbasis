@@ -147,9 +147,10 @@ def group_by_name(con, name: str) -> Row | None:
 def create_group(con, actor: int, name: str, subject_code: str, teacher_id: int | None,
                  stage_id: int | None, start_date: date, weekdays: str, lesson_time: str) -> int:
     cur = con.execute(
-        "INSERT INTO groups (name, subject, teacher_id, stage_id, start_date, weekdays, lesson_time) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (name, subject_code, teacher_id, stage_id, start_date.isoformat(), weekdays, lesson_time))
+        "INSERT INTO groups (name, subject, teacher_id, stage_id, start_date, stage_start, weekdays, lesson_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, subject_code, teacher_id, stage_id, start_date.isoformat(), start_date.isoformat(), weekdays,
+         lesson_time))
     audit(con, actor, "group_add", f"group:{cur.lastrowid}",
           f"subject={subject_code} teacher={teacher_id} stage={stage_id}")
     return cur.lastrowid
@@ -160,14 +161,22 @@ def set_group_teacher(con, actor: int, group_id: int, teacher_id: int) -> None:
     audit(con, actor, "group_teacher", f"group:{group_id}", f"teacher={teacher_id}")
 
 
-def set_group_stage(con, actor: int, group_id: int, stage_id: int) -> None:
-    con.execute("UPDATE groups SET stage_id = ? WHERE id = ?", (stage_id, group_id))
+def set_group_stage(con, actor: int, group_id: int, stage_id: int, on: date | None = None) -> None:
+    """Станция группы. on — с какого дня группа на ней (от этого дня считаются недели и экзамены)."""
+    if on is None:
+        con.execute("UPDATE groups SET stage_id = ? WHERE id = ?", (stage_id, group_id))
+    else:
+        con.execute("UPDATE groups SET stage_id = ?, stage_start = ? WHERE id = ?",
+                    (stage_id, on.isoformat(), group_id))
     audit(con, actor, "group_stage", f"group:{group_id}", f"stage={stage_id}")
 
 
 def set_group_field(con, actor: int, group_id: int, field: str, value: str) -> None:
-    if field not in ("name", "start_date", "weekdays", "lesson_time"):
+    if field not in ("name", "start_date", "stage_start", "weekdays", "lesson_time"):
         raise ValueError(field)
+    if field == "start_date":
+        # если группа ещё на первой станции, дата начала станции меняется вместе с датой старта
+        con.execute("UPDATE groups SET stage_start = ? WHERE id = ? AND stage_start = start_date", (value, group_id))
     con.execute(f"UPDATE groups SET {field} = ? WHERE id = ?", (value, group_id))
     audit(con, actor, f"group_{field}", f"group:{group_id}", value if field != "name" else "")
 
@@ -245,6 +254,43 @@ def set_student_stage(con, actor: int, student_id: int, stage_id: int, on_date: 
     con.execute("INSERT INTO student_stage (student_id, subject, stage_id, date_from, path) "
                 "VALUES (?, ?, ?, ?, ?)", (student_id, st["subject"], stage_id, on_date.isoformat(), path))
     audit(con, actor, "student_stage", f"student:{student_id}", f"stage={stage_id}")
+
+
+def move_station(con, actor: int, student_id: int, stage_id: int, on: date) -> bool:
+    """Перевод ученика на любую станцию (вперёд с пропуском или назад). False — он уже там.
+
+    Прежняя станция отмечается пройденной (при переводе вперёд) или оставленной (назад).
+    Пропущенные станции в истории не появляются — на карте их не будет.
+    """
+    target = stage(con, stage_id)
+    cur = current_stage(con, student_id, target["subject"])
+    if cur and cur["stage_id"] == stage_id:
+        return False
+    forward = True
+    if cur:
+        old = stage(con, cur["stage_id"])
+        order = {"kids": 0, "main": 1, "cefr": 2, "ielts": 2}
+        forward = (order[target["branch"]], target["sort"]) > (order[old["branch"]], old["sort"])
+        con.execute("UPDATE student_stage SET status = ? WHERE id = ?", ("done" if forward else "left", cur["id"]))
+    path = target["branch"] if target["branch"] in ("cefr", "ielts") else (cur["path"] if cur else None)
+    con.execute("INSERT INTO student_stage (student_id, subject, stage_id, date_from, path) VALUES (?, ?, ?, ?, ?)",
+                (student_id, target["subject"], stage_id, on.isoformat(), path))
+    audit(con, actor, "student_station", f"student:{student_id}", f"stage={stage_id}")
+    return True
+
+
+def move_group_station(con, actor: int, group_id: int, stage_id: int, on: date) -> list[int]:
+    """Вся группа на другую станцию: меняется станция группы (и дата её начала) и станция тех
+    учеников, кто стоял на прежней станции группы. Возвращает номера переведённых учеников."""
+    g = group(con, group_id)
+    moved = []
+    for s in group_students(con, group_id):
+        cur = current_stage(con, s["id"], g["subject"])
+        if cur is None or cur["stage_id"] == g["stage_id"]:
+            if move_station(con, actor, s["id"], stage_id, on):
+                moved.append(s["id"])
+    set_group_stage(con, actor, group_id, stage_id, on)
+    return moved
 
 
 def default_stage_id(con, group_row: Row) -> int | None:

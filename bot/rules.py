@@ -53,4 +53,4 @@ def exam_risk(con, student_id: int, group, week: date, next_exam: date | None, o
 def next_exam_for(group, on: date) -> date | None:
     if not group["stage_id"] or not group["exam_transition"]:
         return None
-    return schedule.next_exam(date.fromisoformat(group["start_date"]), on)
+    return schedule.next_exam(schedule.anchor(group), on)

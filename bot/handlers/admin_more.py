@@ -12,6 +12,7 @@ from aiogram.types import CallbackQuery, Message
 from bot import backup, config, reports, repo, schedule, summary
 from bot.access import OwnerOnly
 from bot.db import tx
+from bot.handlers.admin import nav
 from bot.handlers.common import show
 from bot.ui import A, column, kb
 
@@ -19,7 +20,6 @@ log = logging.getLogger("admin")
 router = Router(name="admin_more")
 router.message.filter(OwnerOnly())
 router.callback_query.filter(OwnerOnly())
-CANCEL = [("✖️ Отмена", A(act="cancel"))]
 
 
 class EditTexts(StatesGroup):
@@ -129,7 +129,7 @@ async def topics_stage(cb: CallbackQuery, callback_data: A, state: FSMContext, c
     await show(cb, f"{stage['name_ru']} — юниты сейчас:\n{listing}\n\n"
                    "Пришлите новый список: каждый юнит с новой строки, например\n"
                    "1. Family\n2. My day\n3. Food and drinks\n\n"
-                   "Список заменит прежний. Пустой список не принимается.", kb(CANCEL))
+                   "Список заменит прежний. Пустой список не принимается.", kb(nav(A(act="topics"))))
 
 
 def parse_topics(text: str) -> tuple[list[tuple[int, str]] | None, str]:
@@ -160,7 +160,7 @@ def parse_topics(text: str) -> tuple[list[tuple[int, str]] | None, str]:
 async def topics_save(message: Message, state: FSMContext, con) -> None:
     items, error = parse_topics(message.text or "")
     if error:
-        return await message.answer(error, reply_markup=kb(CANCEL))
+        return await message.answer(error, reply_markup=kb(nav(A(act="topics"))))
     stage_id = (await state.get_data())["stage_id"]
     await state.clear()
     with tx(con):
@@ -223,7 +223,7 @@ async def question_edit(cb: CallbackQuery, callback_data: A, state: FSMContext) 
     await state.update_data(qid=callback_data.id, field=callback_data.arg)
     hint = "4 строки: вариант 0 (худший), 1, 2, 3 (лучший)" if callback_data.arg in (2, 4) else "одна строка"
     await show(cb, f"Пришлите {FIELDS[callback_data.arg][1]} — {hint}.\n"
-                   "Изменение сразу появится в новых формах; старые отчёты не меняются.", kb(CANCEL))
+                   "Изменение сразу появится в новых формах; старые отчёты не меняются.", kb(nav(A(act="question", id=callback_data.id))))
 
 
 @router.message(EditTexts.question)
@@ -236,14 +236,14 @@ async def question_save(message: Message, state: FSMContext, con) -> None:
         options = [re.sub(r"^[0-3]\s*[.)\-—–:]?\s+", "", " ".join(line.split()))
                    for line in text.splitlines() if line.strip()]
         if len(options) != 4 or any(not o or len(o) > 60 for o in options):
-            return await message.answer("Нужно ровно 4 строки, каждая до 60 знаков.", reply_markup=kb(CANCEL))
+            return await message.answer("Нужно ровно 4 строки, каждая до 60 знаков.", reply_markup=kb(nav(A(act="question", id=data["qid"]))))
         lang = field[-2:]
         con.execute(f"UPDATE questions SET opt0_{lang} = ?, opt1_{lang} = ?, opt2_{lang} = ?, opt3_{lang} = ? "
                     f"WHERE id = ?", (*options, data["qid"]))
     else:
         text = " ".join(text.split())
         if not text or len(text) > 40:
-            return await message.answer("Вопрос — от 1 до 40 знаков (он виден на карточке).", reply_markup=kb(CANCEL))
+            return await message.answer("Вопрос — от 1 до 40 знаков (он виден на карточке).", reply_markup=kb(nav(A(act="question", id=data["qid"]))))
         con.execute(f"UPDATE questions SET {field} = ? WHERE id = ?", (text, data["qid"]))
     repo.audit(con, message.from_user.id, "question_text", f"question:{data['qid']}", field)
     await state.clear()
@@ -261,7 +261,7 @@ async def phrases_menu(cb: CallbackQuery, state: FSMContext, con) -> None:
     await state.set_state(EditTexts.phrases)
     await show(cb, f"Готовые фразы для комментария (русский | узбекский):\n{listing}\n\n"
                    "Чтобы заменить, пришлите новый список: каждая фраза с новой строки, "
-                   "русский и узбекский через «|». Каждая фраза — до 40 знаков.", kb(CANCEL))
+                   "русский и узбекский через «|». Каждая фраза — до 40 знаков.", kb(nav(A(act="texts"))))
 
 
 @router.message(EditTexts.phrases)
@@ -271,13 +271,13 @@ async def phrases_save(message: Message, state: FSMContext, con) -> None:
         if not line.strip():
             continue
         if line.count("|") != 1:
-            return await message.answer(f"В строке «{line[:40]}» нужен ровно один знак «|».", reply_markup=kb(CANCEL))
+            return await message.answer(f"В строке «{line[:40]}» нужен ровно один знак «|».", reply_markup=kb(nav(A(act="texts"))))
         ru, uz = (" ".join(x.split()) for x in line.split("|"))
         if not ru or not uz or len(ru) > 40 or len(uz) > 40:
-            return await message.answer(f"Строка «{line[:40]}»: обе части от 1 до 40 знаков.", reply_markup=kb(CANCEL))
+            return await message.answer(f"Строка «{line[:40]}»: обе части от 1 до 40 знаков.", reply_markup=kb(nav(A(act="texts"))))
         items.append((ru, uz))
     if not items or len(items) > 12:
-        return await message.answer("Нужно от 1 до 12 фраз.", reply_markup=kb(CANCEL))
+        return await message.answer("Нужно от 1 до 12 фраз.", reply_markup=kb(nav(A(act="texts"))))
     await state.clear()
     with tx(con):
         con.execute("UPDATE phrases SET active = 0")

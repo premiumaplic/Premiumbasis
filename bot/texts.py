@@ -123,6 +123,41 @@ TEXTS = {
         "ru": "⚠️ Новых подсказок: {n} — кнопка «⚠️ Подсказки».",
         "uz": "⚠️ Yangi maslahatlar: {n} — «⚠️ Maslahatlar» tugmasi.",
     },
+    "btn_stations": {"ru": "🗺 Станции", "uz": "🗺 Bosqichlar"},
+    "btn_back": {"ru": "⬅️ Назад", "uz": "⬅️ Orqaga"},
+    "btn_close": {"ru": "✖️ Закрыть", "uz": "✖️ Yopish"},
+    "btn_yes_move": {"ru": "✅ Да, перевести", "uz": "✅ Ha, oʻtkazish"},
+    "stations_head": {
+        "ru": "Станции группы {group}. Сейчас группа на станции: {stage}.\n"
+              "Нажмите на ученика, чтобы перевести его на другую станцию, или переведите всю группу.",
+        "uz": "{group} guruhi bosqichlari. Hozir guruh bosqichi: {stage}.\n"
+              "Oʻquvchini boshqa bosqichga oʻtkazish uchun ustiga bosing yoki butun guruhni oʻtkazing.",
+    },
+    "stations_whole": {"ru": "👥 Вся группа → другая станция", "uz": "👥 Butun guruh → boshqa bosqich"},
+    "stations_pick_group": {"ru": "На какую станцию перевести группу {group}?",
+                            "uz": "{group} guruhini qaysi bosqichga oʻtkazamiz?"},
+    "stations_pick_student": {"ru": "{name} сейчас на станции {stage}. На какую перевести?",
+                              "uz": "{name} hozir {stage} bosqichida. Qaysi bosqichga oʻtkazamiz?"},
+    "stations_confirm_group": {
+        "ru": "Перевести группу {group} со станции {old} на {new}?\n"
+              "Переведутся ученики, которые сейчас на станции {old}: {n}.\n"
+              "Пропущенные станции не появятся на их карте. {exam}",
+        "uz": "{group} guruhini {old} bosqichidan {new} bosqichiga oʻtkazamizmi?\n"
+              "Hozir {old} bosqichidagi oʻquvchilar oʻtkaziladi: {n}.\n"
+              "Oʻtkazib yuborilgan bosqichlar xaritada koʻrinmaydi. {exam}",
+    },
+    "stations_exam_note": {"ru": "Экзамены станции {new} — каждые 2 месяца, начиная с сегодняшнего дня.",
+                           "uz": "{new} bosqichi imtihonlari — bugundan boshlab har 2 oyda."},
+    "stations_confirm_student": {
+        "ru": "Перевести {name} со станции {old} на {new}? Пропущенные станции не появятся на карте.",
+        "uz": "{name}ni {old} bosqichidan {new} bosqichiga oʻtkazamizmi? Oʻtkazib yuborilgan bosqichlar xaritada koʻrinmaydi.",
+    },
+    "stations_done_group": {"ru": "Готово: группа {group} теперь на станции {new}, переведено учеников: {n}.",
+                            "uz": "Tayyor: {group} guruhi endi {new} bosqichida, oʻtkazilgan oʻquvchilar: {n}."},
+    "stations_done_student": {"ru": "Готово: {name} теперь на станции {new}.",
+                              "uz": "Tayyor: {name} endi {new} bosqichida."},
+    "stations_none": {"ru": "У предмета этой группы нет карты станций.",
+                      "uz": "Bu guruh fani uchun bosqichlar xaritasi yoʻq."},
     "reminder": {
         "ru": "⏰ Напоминание: нет недельного отчёта за неделю {week}.",
         "uz": "⏰ Eslatma: {week} haftasi uchun haftalik hisobot yoʻq.",

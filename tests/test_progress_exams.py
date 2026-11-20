@@ -149,3 +149,29 @@ def test_exam_rejects_bad_scores_and_foreign(con):
     stranger = repo.add_student(con, ACTOR, "Чужой Ученик", "ru", True, other, START)
     assert "Форма не сохранена" in exam(con, teacher, g, [[stranger, 70, 1, "", ""]]).text
     assert exams.auto_decision(60, 60) == "pass" and exams.auto_decision(59.5, 60) == "repeat"
+
+
+def test_jump_from_roundup3_to_a1_skips_stations_and_restarts_exam_calendar(con):
+    teacher, g, sid = student_in(con, stage_code="roundup3")
+    other = repo.add_student(con, ACTOR, "Мадина Юсупова", "ru", True, g["id"], START)
+    ahead = repo.add_student(con, ACTOR, "Жасур Ахмедов", "ru", True, g["id"], START)
+    repo.move_station(con, ACTOR, ahead, stage(con, "a2")["id"], START)        # особый случай — не трогаем
+    moved = repo.move_group_station(con, ACTOR, g["id"], stage(con, "a1")["id"], D(2026, 11, 20))
+    assert sorted(moved) == sorted([sid, other])
+    assert repo.current_stage(con, ahead, "en")["code"] == "a2"
+    g = repo.group(con, g["id"])
+    assert g["stage_code"] == "a1" and g["stage_start"] == "2026-11-20"
+    view = progress.build(con, sid, g, D(2026, 11, 20))
+    names = [n.name_ru for n in view.nodes if n.state != "grey"]
+    assert "Roundup 4" not in names and names[:2] == ["Roundup 3", "Курс A1"]   # пропущенная станция убрана
+    assert view.next_exam == D(2027, 1, 20)      # экзамены A1 — каждые 2 месяца с дня перевода
+    assert view.week == 1
+
+
+def test_teacher_moves_student_back(con):
+    teacher, g, sid = student_in(con, stage_code="a2")
+    assert repo.move_station(con, ACTOR, sid, stage(con, "a1")["id"], ON)
+    assert not repo.move_station(con, ACTOR, sid, stage(con, "a1")["id"], ON)  # уже там
+    statuses = [r["status"] for r in con.execute("SELECT status FROM student_stage WHERE student_id = ? ORDER BY id",
+                                                 (sid,))]
+    assert statuses == ["left", "current"]       # назад: прежняя станция «оставлена», не «пройдена»

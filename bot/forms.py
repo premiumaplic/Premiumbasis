@@ -161,7 +161,10 @@ def group_keyboard(con, conf, g, lang: str, today: date | None = None) -> ReplyK
                                 web_app=WebAppInfo(url=form_url(conf.forms_url, "topic", topic_payload(con, g, lang)))))
     rows.append(third)
     rows.append([KeyboardButton(text=t("btn_cards", lang)), KeyboardButton(text=t("btn_hints", lang))])
-    rows.append([KeyboardButton(text=t("btn_other_group", lang))])
+    last = [KeyboardButton(text=t("btn_other_group", lang))]
+    if g["has_map"]:
+        last.insert(0, KeyboardButton(text=t("btn_stations", lang)))
+    rows.append(last)
     return ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True, keyboard=rows)
 
 
@@ -363,7 +366,7 @@ def _save_exam(con, teacher, g, data, tg_id: int, today: date, lang: str) -> lis
     key = "saved_exam" if by_score else "saved_decision"
     lines = [t(key, lang, group=g["name"], stage=stage[f"name_{suffix}"],
                passed=len(passed_names), repeat=len(repeat_names))]
-    nxt = exams.maybe_advance_group(con, g, stage, len(passed_names), len(passed_names) + len(repeat_names))
+    nxt = exams.maybe_advance_group(con, g, stage, len(passed_names), len(passed_names) + len(repeat_names), today)
     if nxt:
         lines.append(t("group_advanced", lang, stage=nxt[f"name_{suffix}"]))
     if repeat_names and by_score:

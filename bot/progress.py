@@ -104,7 +104,7 @@ def build(con, student_id: int, group, on: date) -> MapView | None:
     view = MapView(path_known=path in FORK_BRANCHES)
     current_index = ids.index(cur["stage_id"])
     current_stage = seq[current_index]
-    start = date.fromisoformat(group["start_date"])
+    start = schedule.anchor(group)
 
     # окончание текущей станции
     if current_stage["exam_transition"]:
@@ -120,14 +120,13 @@ def build(con, student_id: int, group, on: date) -> MapView | None:
         finish, finish_max = _advance(current_stage, stage_start)
         view.week = max(1, (on - stage_start).days // 7 + 1)
 
-    # станции до первой станции ученика не показываем (новичок старше 11 лет начинает с A1)
-    first = con.execute("SELECT stage_id FROM student_stage WHERE student_id = ? AND subject = ? "
-                        "ORDER BY id LIMIT 1", (student_id, group["subject"])).fetchone()
-    first_index = ids.index(first["stage_id"]) if first and first["stage_id"] in ids else 0
-    first_index = min(first_index, current_index)
-
+    # пройденные станции — только те, где ученик действительно был; пропущенные
+    # (например, Roundup 4, если учитель перевёл сразу в A1) на карте не показываются
+    visited = {r["stage_id"] for r in con.execute(
+        "SELECT stage_id FROM student_stage WHERE student_id = ? AND subject = ?", (student_id, group["subject"]))}
+    shown_current = 0
     for i, s in enumerate(seq):
-        if i < first_index:
+        if i < current_index and s["id"] not in visited:
             continue
         node = Node(s["id"], s["name_ru"], s["name_uz"], "future",
                     by_teacher=not s["exam_transition"] and not s["months"])
@@ -137,10 +136,10 @@ def build(con, student_id: int, group, on: date) -> MapView | None:
             node.state = "current"
             node.finish, node.finish_max = finish, finish_max
             view.current = node
+            shown_current = len(view.nodes)
         view.nodes.append(node)
 
     cursor = finish
-    shown_current = current_index - first_index
     for node, s in zip(view.nodes[shown_current + 1:], seq[current_index + 1:]):
         node.finish, node.finish_max = _advance(s, cursor)
         cursor = node.finish_max or node.finish  # диапазон: дальше считаем от верхней границы

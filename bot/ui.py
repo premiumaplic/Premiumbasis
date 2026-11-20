@@ -17,6 +17,13 @@ class T(CallbackData, prefix="t"):
     id: int = 0
 
 
+class TS(CallbackData, prefix="ts"):
+    """Кнопки учителя в меню «Станции»: act — шаг, sid — ученик (0 — вся группа), stage — станция."""
+    act: str
+    sid: int = 0
+    stage: int = 0
+
+
 def kb(*rows) -> InlineKeyboardMarkup:
     """kb([("Текст", callback), ...], [...]) — строки кнопок. Пустые строки пропускаются."""
     keyboard = []

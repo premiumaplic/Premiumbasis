@@ -102,6 +102,7 @@
 
   function renderList() {
     screen = -1;
+    SB.setBack(null);
     app.innerHTML = "";
     window.scrollTo(0, 0);
     var top = el("div", "topbar");
@@ -163,9 +164,10 @@
     app.innerHTML = "";
     window.scrollTo(0, 0);
     SB.setSave(t("save"), save, false);
+    SB.setBack(function () { saveDraft(); renderList(); });   // «← Назад» в шапке Telegram
 
     var top = el("div", "topbar");
-    var back = el("button", "icon-btn", "✕");
+    var back = el("button", "icon-btn", "←");
     back.type = "button";
     back.addEventListener("click", function () { saveDraft(); renderList(); });
     top.appendChild(back);

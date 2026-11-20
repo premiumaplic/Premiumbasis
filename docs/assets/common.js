@@ -384,6 +384,19 @@
     fallbackBar.classList.toggle("hidden", !visible);
   }
 
+  // Родная кнопка Telegram «← Назад» в шапке формы (null — спрятать)
+  var backHandler = null, backBound = false;
+  function setBack(handler) {
+    backHandler = handler;
+    var tg = tgo();
+    if (!inTg() || !tg.BackButton) return;
+    if (!backBound) {
+      tg.BackButton.onClick(function () { if (backHandler) backHandler(); });
+      backBound = true;
+    }
+    if (handler) tg.BackButton.show(); else tg.BackButton.hide();
+  }
+
   function send(payload) {
     var text = JSON.stringify(payload);
     if (SB.byteSize(text) > SB.SEND_LIMIT) throw new Error("too big");
@@ -490,7 +503,7 @@
 
   var ui = {
     tgo: tgo, inTg: inTg, t: t, setLang: setLang, lang: function () { return lang; },
-    haptic: haptic, setSave: setSave, send: send, confirm: confirmBox, toast: toast,
+    haptic: haptic, setSave: setSave, setBack: setBack, send: send, confirm: confirmBox, toast: toast,
     draftGet: draftGet, draftSet: draftSet, draftClear: draftClear,
     avatar: avatar, el: el, load: load, fail: fail,
     parseISO: parseISO, iso: iso, addDays: addDays, weekday: weekday, weekRange: weekRange
