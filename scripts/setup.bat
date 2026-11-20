@@ -145,7 +145,7 @@ try {
 
     # ---------- 6. Файлы запуска и настройки ----------
     Step 'Готовлю файлы запуска'
-    foreach ($f in @('start.bat', 'update.bat', 'check.bat', 'probe.bat')) {
+    foreach ($f in @('start.bat', 'update.bat', 'restore.bat', 'check.bat', 'probe.bat')) {
         Copy-Item (Join-Path $app "scripts\$f") (Join-Path $root $f) -Force
     }
     $cfg = Join-Path $root 'config.ini'

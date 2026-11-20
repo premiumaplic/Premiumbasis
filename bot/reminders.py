@@ -57,7 +57,7 @@ async def send_due(bot: Bot, con, now: datetime | None = None) -> int:
     week = due_week(con, now)
     if not week:
         return 0
-    repo.set_setting(con, 0, "reminder_last_week", week)  # 0 — действие самого бота
+    repo.set_setting(con, 0, "reminder_last_week", week, quiet=True)  # 0 — действие самого бота
     sent = 0
     for tg_id, text in messages(con, week):
         try:

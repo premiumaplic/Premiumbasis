@@ -115,7 +115,7 @@ try {
     if (-not (RunPy -m bot.tools migrate)) { RollBack 'не удалось обновить базу (база не изменена).' }
 
     # ---------- 5. Файлы запуска ----------
-    foreach ($f in @('start.bat', 'check.bat', 'probe.bat')) {
+    foreach ($f in @('start.bat', 'restore.bat', 'check.bat', 'probe.bat')) {
         Copy-Item (Join-Path $app "scripts\$f") (Join-Path $root $f) -Force
     }
     # update.bat сейчас выполняется, поэтому новая версия заменит его при следующем запуске start.bat

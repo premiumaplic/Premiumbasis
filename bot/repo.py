@@ -33,10 +33,12 @@ def all_settings(con) -> dict[str, str]:
     return {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings ORDER BY key")}
 
 
-def set_setting(con, actor: int, key: str, value: str) -> None:
+def set_setting(con, actor: int, key: str, value: str, quiet: bool = False) -> None:
+    """quiet=True — служебная отметка самого бота (без записи в журнал владельца)."""
     con.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
-    audit(con, actor, "setting", key, value)
+    if not quiet:
+        audit(con, actor, "setting", key, value)
 
 
 # ---------------------------------------------------------------- учителя

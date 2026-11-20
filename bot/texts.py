@@ -114,6 +114,15 @@ TEXTS = {
     "cards_no_consent": {"ru": "нет отметки о согласии родителя", "uz": "ota-ona roziligi belgilanmagan"},
     "cards_wait": {"ru": "Рисую карточки: {n} шт…", "uz": "Kartalar tayyorlanmoqda: {n} ta…"},
     "choose_group_first": {"ru": "Сначала выберите группу: /start", "uz": "Avval guruhni tanlang: /start"},
+    "btn_hints": {"ru": "⚠️ Подсказки", "uz": "⚠️ Maslahatlar"},
+    "hints_none": {"ru": "По группе {group} подсказок нет 👍", "uz": "{group} guruhi boʻyicha maslahatlar yoʻq 👍"},
+    "hints_header": {"ru": "Подсказки по группе {group}: {n}", "uz": "{group} guruhi boʻyicha maslahatlar: {n}"},
+    "btn_close_hint": {"ru": "✓ Закрыть", "uz": "✓ Yopish"},
+    "hint_closed": {"ru": "✓ Закрыто", "uz": "✓ Yopildi"},
+    "new_hints": {
+        "ru": "⚠️ Новых подсказок: {n} — кнопка «⚠️ Подсказки».",
+        "uz": "⚠️ Yangi maslahatlar: {n} — «⚠️ Maslahatlar» tugmasi.",
+    },
     "reminder": {
         "ru": "⏰ Напоминание: нет недельного отчёта за неделю {week}.",
         "uz": "⏰ Eslatma: {week} haftasi uchun haftalik hisobot yoʻq.",

@@ -168,3 +168,58 @@ def test_cards_for_parents(chat, con):
     assert "карточек 1" in final
     assert "Мадина Юсупова — нет отчёта за неделю" in final
     assert "Жасур Ахмедов — нет отметки о согласии родителя" in final
+
+
+def test_owner_backup_without_password(chat):
+    calls = run(chat.send(OWNER, "/backup"))
+    assert "не задан пароль бэкапа" in last_text(calls)
+
+
+def test_owner_uploads_book_units_and_edits_phrases(chat, con):
+    a1 = repo.stage_by_code(con, "en", "a1")["id"]
+    run(chat.press(OWNER, f"a:topics_stage:{a1}:0"))
+    calls = run(chat.send(OWNER, "1. Family\n2. My day\nFood and drinks"))
+    assert "юнитов 3" in last_text(calls)
+    assert [r["title"] for r in con.execute("SELECT title FROM topics ORDER BY unit_no")] == \
+        ["Family", "My day", "Food and drinks"]
+    run(chat.press(OWNER, "a:phrases:0:0"))
+    assert "ровно один знак" in last_text(run(chat.send(OWNER, "Молодец без перевода")))
+    run(chat.send(OWNER, "Молодец! | Barakalla!\nЧитай больше. | Koʻproq oʻqi."))
+    from bot import reports
+    assert [p["text_uz"] for p in reports.phrases(con)] == ["Barakalla!", "Koʻproq oʻqi."]
+
+
+def test_owner_edits_question_options(chat, con):
+    qid = con.execute("SELECT id FROM questions WHERE code = 'homework'").fetchone()[0]
+    run(chat.press(OWNER, f"a:q_edit:{qid}:4"))
+    assert "ровно 4 строки" in last_text(run(chat.send(OWNER, "bir\nikki")))
+    run(chat.send(OWNER, "0 — qilinmagan\n1 — qisman\n2 — xatolar bilan\n3 — yaxshi"))
+    q = con.execute("SELECT opt0_uz, opt3_uz FROM questions WHERE id = ?", (qid,)).fetchone()
+    assert tuple(q) == ("qilinmagan", "yaxshi")
+
+
+def test_teacher_hints_button_and_close(chat, con):
+    import datetime as dt
+    from bot import reports, schedule
+    tid = make_teacher(con, TEACHER_TG)
+    gid = make_group(con, "10-А", teacher_id=tid)
+    sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, schedule.today())
+    for back in (2, 1):
+        reports.save_attendance(con, 1, gid, schedule.today() - dt.timedelta(days=back), [(sid, "absent")])
+    run(chat.press(TEACHER_TG, f"t:group:{gid}"))
+    calls = run(chat.send(TEACHER_TG, "⚠️ Подсказки"))
+    texts = [c.text for c in calls if getattr(c, "text", None)]
+    assert "Подсказки по группе 10-А: 1" in texts[0] and "Свяжитесь с родителем" in texts[1]
+    close_cb = next(b for b in buttons(calls).values())
+    run(chat.press(TEACHER_TG, close_cb))
+    assert "подсказок нет" in last_text(run(chat.send(TEACHER_TG, "⚠️ Подсказки")))
+
+
+def test_forwarded_channel_post_shows_channel_id(chat):
+    from aiogram.types import Update
+    msg = chat._msg(OWNER, text="пост", forward_origin={
+        "type": "channel", "date": 1795000000, "message_id": 5,
+        "chat": {"id": -1001234567890, "type": "channel", "title": "Бэкапы"}})
+    start = len(chat.session.calls)
+    run(chat.dp.feed_update(chat.bot, Update(update_id=500, message=msg)))
+    assert "backup_channel_id = -1001234567890" in chat.session.calls[start:][-1].text

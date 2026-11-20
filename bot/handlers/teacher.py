@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
-from bot import card, forms, repo, reports, schedule
+from bot import card, forms, hints, repo, reports, schedule
 from bot.config import data_dir
 from bot.access import TeacherOnly
 from bot.handlers.common import show
@@ -134,6 +134,30 @@ def _skipped_text(skipped, lang: str) -> str:
     lines = [t("cards_skipped", lang)]
     lines += [f"• {s['full_name']} — {t(reason, lang)}" for s, reason in skipped]
     return "\n".join(lines)
+
+
+@router.message(F.text.in_(all_variants("btn_hints")))
+async def show_hints(message: Message, con, teacher) -> None:
+    lang = teacher["lang"]
+    g = repo.group(con, teacher["current_group_id"]) if teacher["current_group_id"] else None
+    if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
+        return await message.answer(t("choose_group_first", lang))
+    hints.evaluate_group(con, g["id"])
+    rows = hints.open_hints(con, g["id"])
+    if not rows:
+        return await message.answer(t("hints_none", lang, group=g["name"]))
+    await message.answer(t("hints_header", lang, group=g["name"], n=len(rows)))
+    for h in rows[:30]:
+        await message.answer(hints.describe(con, h, lang),
+                             reply_markup=kb([(t("btn_close_hint", lang), T(act="hint_close", id=h["id"]))]))
+
+
+@router.callback_query(T.filter(F.act == "hint_close"))
+async def close_hint(cb: CallbackQuery, callback_data: T, con, teacher) -> None:
+    lang = teacher["lang"]
+    if hints.close(con, callback_data.id, teacher["id"]):
+        await cb.message.edit_text((cb.message.text or "") + "\n" + t("hint_closed", lang))
+    await cb.answer(t("hint_closed", lang))
 
 
 @router.message()

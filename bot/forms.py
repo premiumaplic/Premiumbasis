@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
-from bot import exams, progress, repo, reports, schedule
+from bot import exams, hints, progress, repo, reports, schedule
 from bot.payload import SEND_DATA_LIMIT, byte_size, encode_param
 from bot.texts import t
 from bot.timefmt import human_time
@@ -160,7 +160,7 @@ def group_keyboard(con, conf, g, lang: str, today: date | None = None) -> ReplyK
     third.append(KeyboardButton(text=t("btn_topic", lang),
                                 web_app=WebAppInfo(url=form_url(conf.forms_url, "topic", topic_payload(con, g, lang)))))
     rows.append(third)
-    rows.append([KeyboardButton(text=t("btn_cards", lang))])
+    rows.append([KeyboardButton(text=t("btn_cards", lang)), KeyboardButton(text=t("btn_hints", lang))])
     rows.append([KeyboardButton(text=t("btn_other_group", lang))])
     return ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True, keyboard=rows)
 
@@ -394,6 +394,9 @@ def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime
         with tx(con):
             lines = SAVERS[data["t"]](con, teacher, g, data, tg_id, today, lang)
             reports.record_submission(con, data["u"], tg_id, data["t"], "saved")
+            new_hints = hints.evaluate_group(con, g["id"], today) if data["t"] != "tp" else 0
+        if new_hints:
+            lines.append(t("new_hints", lang, n=new_hints))
     except FormError as e:
         return Result(t("form_rejected", lang, reason=t(e.key, lang)), None)
     if (now - sent_at).total_seconds() > LATE_DELIVERY_SECONDS:

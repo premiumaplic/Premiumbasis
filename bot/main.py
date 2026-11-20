@@ -9,10 +9,24 @@ from aiogram.exceptions import TelegramAPIError, TelegramUnauthorizedError
 from aiogram.types import BotCommand
 
 from bot import config as cfg
-from bot import db, keepawake, logsetup, reminders, single
+from bot import backup, db, keepawake, logsetup, scheduler, single
 from bot.app import build_dispatcher
 
 log = logging.getLogger("bot")
+
+
+def clean_tmp() -> None:
+    """Временные файлы старше суток удаляются (они только внутри data\\tmp)."""
+    import time
+    tmp = cfg.data_dir() / "tmp"
+    if not tmp.exists():
+        return
+    for f in tmp.rglob("*"):
+        try:
+            if f.is_file() and time.time() - f.stat().st_mtime > 86400:
+                f.unlink()
+        except OSError:
+            pass
 
 
 def open_database():
@@ -32,6 +46,7 @@ def open_database():
 
 
 async def run(conf: cfg.Config) -> None:
+    clean_tmp()
     con = open_database()
     bot = Bot(conf.token)
     dp = build_dispatcher(conf, con)
@@ -42,6 +57,7 @@ async def run(conf: cfg.Config) -> None:
     await bot.set_my_commands([BotCommand(command="start", description="Начать / меню"),
                                BotCommand(command="myid", description="Мой Telegram ID"),
                                BotCommand(command="cancel", description="Отменить ввод")])
+    # /backup и /summary — команды владельца, в общий список не выносим
     if conf.owner_id:
         try:
             await bot.send_message(conf.owner_id, "Бот запущен. Меню: /start")
@@ -50,7 +66,15 @@ async def run(conf: cfg.Config) -> None:
     else:
         print("\n>>> В config.ini не вписан owner_id. Напишите боту /myid, впишите номер "
               "в config.ini и перезапустите start.bat\n")
-    reminder_task = asyncio.create_task(reminders.loop(bot, con))  # noqa: F841 — живёт, пока работает бот
+    problem = await backup.check_channel(bot, conf.backup_channel_id)
+    if problem:
+        log.warning("Канал бэкапов: %s", problem)
+        if conf.owner_id:
+            try:
+                await bot.send_message(conf.owner_id, "⚠️ " + problem)
+            except TelegramAPIError:
+                pass
+    jobs = asyncio.create_task(scheduler.loop(bot, con, conf))  # noqa: F841 — живёт, пока работает бот
     # Старые обновления не сбрасываются: формы, отправленные пока бот был выключен, обработаются
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

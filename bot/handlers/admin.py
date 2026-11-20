@@ -70,6 +70,8 @@ def menu_markup(teacher) -> object:
         [("👩‍🏫 Учителя", A(act="teachers")), ("👥 Группы", A(act="groups"))],
         [("🎓 Ученики", A(act="students")), ("📥 Excel", A(act="excel"))],
         [("⚙️ Настройки", A(act="settings")), ("🎯 Баллы экзаменов", A(act="scores"))],
+        [("📚 Тексты", A(act="texts")), ("📊 Сводка", A(act="summary"))],
+        [("💾 Бэкап сейчас", A(act="backup"))],
         [("📚 Мои группы (как учитель)", "t:groups:0")] if teacher else [],
     )
 
@@ -702,6 +704,7 @@ SETTINGS = {
     "reminder_day": ("День напоминания учителям", "weekday"),
     "reminder_time": ("Время напоминания (не позже 21:00)", "time21"),
     "backup_time": ("Время ежедневного бэкапа", "time"),
+    "summary_time": ("Время сводки владельцу (в день напоминаний)", "time"),
     "rate_limit_per_min": ("Сколько сообщений в минуту от одного человека принимать", "int:10:200"),
     "url_safe_length": ("Длина ссылки формы, после которой форма делится на части", "int:800:8000"),
     "hint_absent_streak": ("Подсказка: пропусков подряд", "int:1:10"),
