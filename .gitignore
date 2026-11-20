@@ -1,0 +1,17 @@
+# Секреты и данные — только на ПК владельца, никогда в GitHub
+config.ini
+data/
+python/
+app/
+*.log
+*.db
+*.db-*
+*.sqlite
+*.zip
+
+# Служебное
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/

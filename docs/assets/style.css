@@ -1,0 +1,120 @@
+/*
+ * Все стили форм в одном файле.
+ * Цвета берутся из темы Telegram (--tg-theme-*), поэтому формы
+ * выглядят «родными» в светлой и тёмной теме.
+ * Окончательный дизайн будет позже (Figma) — меняйте переменные ниже.
+ */
+:root {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --bg2: var(--tg-theme-secondary-bg-color, #f1f3f6);
+  --text: var(--tg-theme-text-color, #1a1d21);
+  --hint: var(--tg-theme-hint-color, #8a9099);
+  --accent: var(--tg-theme-button-color, #2f80ed);
+  --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  --ok: #2e9d5b;
+  --warn: #d98a00;
+  --bad: #c8463d;
+  --muted: #7d8794;
+
+  --radius: 12px;
+  --gap: 10px;
+  --tap: 52px;          /* минимальная высота кнопки — удобно пальцем */
+  --font: -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+  --size: 17px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--size);
+  line-height: 1.35;
+  -webkit-text-size-adjust: 100%;
+}
+
+main {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 12px 96px; /* снизу место под кнопку Telegram */
+}
+
+h1 { font-size: 21px; margin: 4px 0 12px; }
+h2 { font-size: 17px; margin: 18px 0 8px; color: var(--hint); font-weight: 600; }
+
+.card {
+  background: var(--bg2);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: var(--gap);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.15);
+}
+.row:last-child { border-bottom: 0; }
+.row .label { flex: 1; }
+.row .value { text-align: right; font-weight: 600; }
+
+.ok { color: var(--ok); }
+.warn { color: var(--warn); }
+.bad { color: var(--bad); }
+.hint { color: var(--hint); font-size: 14px; }
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--bg2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.choice.selected { border-color: var(--accent); }
+
+.btn {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.counter {
+  position: sticky;
+  bottom: 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-top: 1px solid rgba(127, 127, 127, 0.2);
+  font-size: 15px;
+}
+
+.error-box {
+  background: rgba(200, 70, 61, 0.12);
+  color: var(--bad);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: var(--gap);
+}
+
+.hidden { display: none !important; }

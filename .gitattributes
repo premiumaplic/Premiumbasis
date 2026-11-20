@@ -1,0 +1,4 @@
+# Файлы для Windows хранятся как есть, с переводами строк CRLF
+*.bat -text
+*.ps1 -text
+*.ini -text

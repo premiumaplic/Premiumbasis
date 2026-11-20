@@ -1,0 +1,6 @@
+#!/bin/sh
+# Git-хук для разработчика: проверка на секреты перед коммитом.
+# Установка: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+files=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$files" ] && exit 0
+exec python3 scripts/check_secrets.py $files
