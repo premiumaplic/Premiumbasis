@@ -60,7 +60,8 @@ async def run(conf: cfg.Config) -> None:
     # /backup и /summary — команды владельца, в общий список не выносим
     if conf.owner_id:
         try:
-            await bot.send_message(conf.owner_id, "Бот запущен. Меню: /start")
+            from bot import __version__
+            await bot.send_message(conf.owner_id, f"Бот запущен (версия {__version__}). Меню: /start")
         except TelegramAPIError:
             log.info("Не смог написать владельцу: откройте бота в Telegram и нажмите Start")
     else:

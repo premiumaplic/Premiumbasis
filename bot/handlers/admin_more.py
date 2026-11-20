@@ -63,15 +63,6 @@ async def summary_now(event, con) -> None:
         await event.answer(text)
 
 
-@router.message(F.forward_origin.type == "channel")
-async def channel_id(message: Message) -> None:
-    """Владелец пересылает сообщение из закрытого канала — бот подсказывает его ID для config.ini."""
-    chat = message.forward_origin.chat
-    await message.answer(f"ID канала «{chat.title}»: {chat.id}\n"
-                         f"Впишите в config.ini строку:\nbackup_channel_id = {chat.id}\n"
-                         "и перезапустите бота. Бот должен быть администратором канала с правом публикации.")
-
-
 # ================================================================ тексты
 
 @router.callback_query(A.filter(F.act == "texts"))

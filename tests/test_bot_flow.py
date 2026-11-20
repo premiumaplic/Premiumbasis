@@ -223,3 +223,48 @@ def test_forwarded_channel_post_shows_channel_id(chat):
     start = len(chat.session.calls)
     run(chat.dp.feed_update(chat.bot, Update(update_id=500, message=msg)))
     assert "backup_channel_id = -1001234567890" in chat.session.calls[start:][-1].text
+
+
+def _membership(chat, chat_obj, status, rights=None):
+    from aiogram.types import Update
+    new = {"status": status, "user": {"id": 42, "is_bot": True, "first_name": "Bot"}}
+    if status == "administrator":
+        new.update({"can_be_edited": False, "is_anonymous": False, "can_manage_chat": True,
+                    "can_delete_messages": True, "can_manage_video_chats": False, "can_restrict_members": False,
+                    "can_promote_members": False, "can_change_info": False, "can_invite_users": True,
+                    "can_post_stories": False, "can_edit_stories": False, "can_delete_stories": False,
+                    "can_send_welcome_messages": False,
+                    **(rights or {})})
+    upd = {"chat": chat_obj, "from": {"id": OWNER, "is_bot": False, "first_name": "Owner"}, "date": 1795000000,
+           "old_chat_member": {"status": "left", "user": {"id": 42, "is_bot": True, "first_name": "Bot"}},
+           "new_chat_member": new}
+    start = len(chat.session.calls)
+    run(chat.dp.feed_update(chat.bot, Update(update_id=900, my_chat_member=upd)))
+    return chat.session.calls[start:]
+
+
+def test_bot_added_to_channel_tells_owner_the_id(chat):
+    calls = _membership(chat, {"id": -1009876543210, "type": "channel", "title": "Бэкапы"}, "administrator",
+                        {"can_post_messages": True})
+    msg = [c for c in calls if type(c).__name__ == "SendMessage"][-1]
+    assert msg.chat_id == OWNER and "backup_channel_id = -1009876543210" in msg.text
+    assert "нет права публиковать" not in msg.text
+    calls = _membership(chat, {"id": -1009876543210, "type": "channel", "title": "Бэкапы"}, "administrator",
+                        {"can_post_messages": False})
+    assert "нет права публиковать" in [c for c in calls if type(c).__name__ == "SendMessage"][-1].text
+
+
+def test_bot_added_to_group_leaves_and_explains(chat):
+    calls = _membership(chat, {"id": -100555, "type": "supergroup", "title": "Бэкапы"}, "member")
+    names = [type(c).__name__ for c in calls]
+    assert "LeaveChat" in names
+    assert "нужен закрытый КАНАЛ" in [c for c in calls if type(c).__name__ == "SendMessage"][-1].text
+
+
+def test_forward_from_group_is_explained(chat):
+    from aiogram.types import Update
+    msg = chat._msg(OWNER, text="пост", forward_origin={
+        "type": "chat", "date": 1795000000, "sender_chat": {"id": -100555, "type": "supergroup", "title": "Г"}})
+    start = len(chat.session.calls)
+    run(chat.dp.feed_update(chat.bot, Update(update_id=901, message=msg)))
+    assert "нужен закрытый КАНАЛ" in chat.session.calls[start:][-1].text

@@ -8,7 +8,7 @@ from bot.handlers import admin, admin_excel, admin_more, common, fallback, teach
 
 
 def build_dispatcher(conf, con) -> Dispatcher:
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=MemoryStorage(), conf=conf)
     access = AccessMiddleware(conf, con)
     dp.message.outer_middleware(access)
     dp.callback_query.outer_middleware(access)
