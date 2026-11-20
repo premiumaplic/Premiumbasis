@@ -145,7 +145,7 @@ try {
 
     # ---------- 6. Файлы запуска и настройки ----------
     Step 'Готовлю файлы запуска'
-    foreach ($f in @('probe.bat', 'check.bat')) {
+    foreach ($f in @('start.bat', 'update.bat', 'check.bat', 'probe.bat')) {
         Copy-Item (Join-Path $app "scripts\$f") (Join-Path $root $f) -Force
     }
     $cfg = Join-Path $root 'config.ini'
@@ -162,10 +162,9 @@ try {
     Write-Host ''
     Write-Host 'Что нужно вписать в config.ini (он сейчас откроется в Блокноте):'
     Write-Host '  1) token    - токен бота от @BotFather'
-    Write-Host '  2) owner_id - ваш Telegram ID. Если не знаете: запустите probe.bat,'
-    Write-Host '                напишите боту /myid, впишите номер и перезапустите probe.bat'
-    Write-Host '  3) testers  - (необязательно) ID учителей, которые помогут проверить на своих телефонах'
-    Write-Host 'Сохраните файл (Ctrl+S) и запустите probe.bat.'
+    Write-Host '  2) owner_id - ваш Telegram ID. Если не знаете: запустите start.bat,'
+    Write-Host '                напишите боту /myid, впишите номер и перезапустите start.bat'
+    Write-Host 'Сохраните файл (Ctrl+S) и запустите start.bat.'
     if ($newConfig) { Start-Process notepad.exe $cfg }
     exit 0
 }
