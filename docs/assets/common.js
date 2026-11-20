@@ -247,3 +247,237 @@
     localDate: localDate
   };
 })();
+
+/*
+ * Общие части интерфейса форм: тема, тексты ru/uz, кнопка «Сохранить», черновик, всплывашки.
+ */
+(function () {
+  "use strict";
+
+  // telegram-web-app.js грузится ПОСЛЕ этого файла, поэтому Telegram ищем при каждом обращении
+  function tgo() { return window.Telegram && window.Telegram.WebApp; }
+  function inTg() { var w = tgo(); return !!(w && w.platform && w.platform !== "unknown"); }
+
+  // Тексты интерфейса. Узбекский — ЧЕРНОВИК, на проверку владельцу.
+  var I18N = {
+    ru: {
+      save: "Сохранить", saveN: "Сохранить · {n}", next: "Следующий", toList: "К списку",
+      attendance: "Посещаемость", weekly: "Недельный отчёт", topic: "Тема урока",
+      present: "Пришёл", late: "Опоздал", absent: "Не пришёл", excused: "Уважит.",
+      presentShort: "Пришли", lateShort: "Опоздали", absentShort: "Нет", excusedShort: "Уважит.",
+      allPresent: "Все пришли", tapHint: "Нажмите на ученика, чтобы сменить отметку",
+      today: "сегодня", savedForDate: "За этот день уже сохранено — можно исправить",
+      part: "Часть {i} из {n}", students: "учеников",
+      thisWeek: "Эта неделя", lastWeek: "Прошлая неделя",
+      filled: "Заполнено {k} из {n}", done: "готово", saved: "сохранено", empty: "не заполнен",
+      comment: "Комментарий для родителя", commentHint: "до 80 букв, можно пусто",
+      commentExists: "Комментарий уже сохранён — оставьте пустым, чтобы не менять",
+      phrases: "Готовые фразы", card: "карточка",
+      fromLastWeek: "Подставлено с прошлой недели — поменяйте, что изменилось",
+      answerAll: "Ответьте на все вопросы", great: "Отлично! {k} из {n}", allDone: "Все заполнены! Нажмите «Сохранить»",
+      nothingToSave: "Сначала заполните хотя бы одного ученика",
+      tooBig: "Помещается {k} из {n}. Отправить их сейчас? Остальные останутся в черновике — откройте отчёт ещё раз.",
+      current: "Сейчас", noTopic: "тема не указана", chooseUnit: "Юнит из книги", ownTopic: "Своя тема",
+      topicPlaceholder: "Например: Present Simple, неправильные глаголы",
+      notInTelegram: "Это просмотр формы. Сохранять можно только из Telegram.",
+      broken: "Данные в ссылке повреждены. Откройте форму кнопкой в чате бота.",
+      noData: "Откройте форму кнопкой в чате бота.",
+      demo: "Демо: все имена выдуманы"
+    },
+    uz: {
+      save: "Saqlash", saveN: "Saqlash · {n}", next: "Keyingisi", toList: "Roʻyxatga",
+      attendance: "Davomat", weekly: "Haftalik hisobot", topic: "Dars mavzusi",
+      present: "Keldi", late: "Kechikdi", absent: "Kelmadi", excused: "Sababli",
+      presentShort: "Keldi", lateShort: "Kechikdi", absentShort: "Yoʻq", excusedShort: "Sababli",
+      allPresent: "Hammasi keldi", tapHint: "Belgini oʻzgartirish uchun oʻquvchini bosing",
+      today: "bugun", savedForDate: "Bu kun uchun saqlangan — tuzatish mumkin",
+      part: "{n} tadan {i}-qism", students: "oʻquvchi",
+      thisWeek: "Shu hafta", lastWeek: "Oʻtgan hafta",
+      filled: "{n} tadan {k} tasi toʻldirildi", done: "tayyor", saved: "saqlangan", empty: "toʻldirilmagan",
+      comment: "Ota-ona uchun izoh", commentHint: "80 harfgacha, boʻsh qolishi mumkin",
+      commentExists: "Izoh allaqachon saqlangan — oʻzgartirmaslik uchun boʻsh qoldiring",
+      phrases: "Tayyor iboralar", card: "karta",
+      fromLastWeek: "Oʻtgan haftadan olindi — oʻzgarganini tuzating",
+      answerAll: "Barcha savollarga javob bering", great: "Ajoyib! {n} tadan {k}", allDone: "Hammasi toʻldirildi! «Saqlash»ni bosing",
+      nothingToSave: "Avval kamida bitta oʻquvchini toʻldiring",
+      tooBig: "{n} tadan {k} tasi sigʻadi. Hozir yuborilsinmi? Qolganlari qoralamada qoladi — hisobotni qayta oching.",
+      current: "Hozir", noTopic: "mavzu koʻrsatilmagan", chooseUnit: "Kitobdan unit", ownTopic: "Oʻz mavzusi",
+      topicPlaceholder: "Masalan: Present Simple, notoʻgʻri feʼllar",
+      notInTelegram: "Bu shaklni koʻrish. Faqat Telegram orqali saqlash mumkin.",
+      broken: "Havoladagi maʼlumotlar buzilgan. Shaklni bot chatidagi tugma orqali oching.",
+      noData: "Shaklni bot chatidagi tugma orqali oching.",
+      demo: "Demo: barcha ismlar oʻylab topilgan"
+    }
+  };
+  var lang = "ru";
+
+  function t(key, vars) {
+    var text = (I18N[lang] && I18N[lang][key]) || I18N.ru[key] || key;
+    if (vars) Object.keys(vars).forEach(function (k) { text = text.split("{" + k + "}").join(vars[k]); });
+    return text;
+  }
+
+  function setLang(value) { lang = value === "uz" ? "uz" : "ru"; document.documentElement.lang = lang; }
+
+  // Тема: светлая/тёмная по Telegram, шапка и фон в цвет формы
+  function applyTheme() {
+    var tg = tgo();
+    var dark = tg && tg.colorScheme === "dark";
+    if (!tg && window.matchMedia) dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    if (!tg) return;
+    var bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    try {
+      if (tg.isVersionAtLeast && tg.isVersionAtLeast("6.1")) {
+        tg.setHeaderColor(bg);
+        tg.setBackgroundColor(bg);
+      }
+    } catch (e) { /* старый Telegram — не страшно */ }
+  }
+
+  function haptic(kind) {
+    var tg = tgo();
+    try {
+      if (!tg || !tg.HapticFeedback) return;
+      if (kind === "select") tg.HapticFeedback.selectionChanged();
+      else if (kind === "success" || kind === "error" || kind === "warning") tg.HapticFeedback.notificationOccurred(kind);
+      else tg.HapticFeedback.impactOccurred("light");
+    } catch (e) { /* без вибрации */ }
+  }
+
+  // Кнопка «Сохранить»: в Telegram — родная MainButton, вне Telegram — кнопка внизу страницы
+  var saveHandler = null, fallbackBar = null;
+  function setSave(text, handler, visible) {
+    saveHandler = handler;
+    var tg = tgo();
+    if (inTg() && tg.MainButton) {
+      tg.MainButton.setParams({ text: text, color: "#ff9a3c", text_color: "#ffffff", is_visible: !!visible });
+      return;
+    }
+    if (!fallbackBar) {
+      fallbackBar = document.createElement("div");
+      fallbackBar.className = "save-bar";
+      var b = document.createElement("button");
+      b.className = "btn";
+      b.type = "button";
+      b.addEventListener("click", function () { if (saveHandler) saveHandler(); });
+      fallbackBar.appendChild(b);
+      document.body.appendChild(fallbackBar);
+    }
+    fallbackBar.firstChild.textContent = text;
+    fallbackBar.classList.toggle("hidden", !visible);
+  }
+
+  function send(payload) {
+    var text = JSON.stringify(payload);
+    if (SB.byteSize(text) > SB.SEND_LIMIT) throw new Error("too big");
+    if (!inTg()) {
+      toast(t("notInTelegram"), true);
+      if (window.console) console.log("sendData", text);
+      window.__lastSent = text;
+      return false;
+    }
+    tgo().sendData(text); // Telegram сам закроет форму
+    return true;
+  }
+
+  function confirmBox(text, callback) {
+    var tg = tgo();
+    if (inTg() && tg.showConfirm && tg.isVersionAtLeast && tg.isVersionAtLeast("6.2")) {
+      tg.showConfirm(text, callback);
+    } else {
+      callback(window.confirm(text));
+    }
+  }
+
+  var toastTimer = null;
+  function toast(text, bad) {
+    var old = document.querySelector(".toast");
+    if (old) old.remove();
+    var el = document.createElement("div");
+    el.className = "toast" + (bad ? " bad" : "");
+    el.textContent = text;
+    document.body.appendChild(el);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.remove(); }, 2200);
+  }
+
+  // Черновик на телефоне (только номера учеников и ответы; стирается после отправки)
+  function draftGet(key) {
+    try { return JSON.parse(localStorage.getItem("sb:" + key) || "null"); } catch (e) { return null; }
+  }
+  function draftSet(key, value) {
+    try { localStorage.setItem("sb:" + key, JSON.stringify(value)); } catch (e) { /* нет места — не страшно */ }
+  }
+  function draftClear(key) {
+    try { localStorage.removeItem("sb:" + key); } catch (e) { /* ничего */ }
+  }
+
+  var AVATAR_COLORS = ["#ff9a3c", "#4dba6a", "#5ab4f0", "#b37cf0", "#ff7a6b", "#f2b630", "#3cc6b6", "#f07cb4"];
+  function avatar(name, id) {
+    var el = document.createElement("span");
+    el.className = "avatar";
+    el.style.background = AVATAR_COLORS[(id || 0) % AVATAR_COLORS.length];
+    el.textContent = (name || "?").charAt(0).toUpperCase();
+    return el;
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+
+  // Загрузка данных формы: из ссылки (#d=...) или демо-данные (?demo)
+  function load(demoData, onReady) {
+    applyTheme();
+    var tg = tgo();
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      if (inTg() && tg.MainButton) tg.MainButton.onClick(function () { if (saveHandler) saveHandler(); });
+    }
+    var isDemo = /[?&]demo\b/.test(location.search);
+    if (isDemo) {
+      setLang(/[?&]lang=uz\b/.test(location.search) ? "uz" : demoData.lang);
+      demoData.lang = lang;
+      return onReady(demoData, true);
+    }
+    var p = SB.readParam("d");
+    var raw = p.hash || p.query;
+    if (!raw) return fail(t("noData"));
+    SB.decodeParam(raw).then(function (res) {
+      setLang(res.data.lang);
+      onReady(res.data, false);
+    }).catch(function () { fail(t("broken")); });
+  }
+
+  function fail(text) {
+    var main = document.querySelector("main");
+    main.innerHTML = "";
+    main.appendChild(el("div", "error-box", text));
+  }
+
+  // Дата: «пт 20» и «16–21 нояб.»
+  var WD = { ru: ["вс", "пн", "вт", "ср", "чт", "пт", "сб"], uz: ["ya", "du", "se", "ch", "pa", "ju", "sh"] };
+  var MON = { ru: ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"],
+              uz: ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"] };
+  function parseISO(s) { var a = s.split("-"); return new Date(+a[0], +a[1] - 1, +a[2]); }
+  function iso(d) { return SB.localDate(d); }
+  function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+  function weekday(d) { return WD[lang][d.getDay()]; }
+  function weekRange(monday) {
+    var sat = addDays(monday, 5);
+    return monday.getDate() + "–" + sat.getDate() + " " + MON[lang][sat.getMonth()];
+  }
+
+  var ui = {
+    tgo: tgo, inTg: inTg, t: t, setLang: setLang, lang: function () { return lang; },
+    haptic: haptic, setSave: setSave, send: send, confirm: confirmBox, toast: toast,
+    draftGet: draftGet, draftSet: draftSet, draftClear: draftClear,
+    avatar: avatar, el: el, load: load, fail: fail,
+    parseISO: parseISO, iso: iso, addDays: addDays, weekday: weekday, weekRange: weekRange
+  };
+  for (var k in ui) window.SB[k] = ui[k];
+})();

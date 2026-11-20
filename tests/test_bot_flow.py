@@ -93,6 +93,11 @@ def test_teacher_sees_only_own_groups(chat, con):
     assert list(buttons(calls)) == ["10-А · Английский"]
     calls = run(chat.press(TEACHER_TG, f"t:group:{mine}"))
     assert "Группа 10-А · Курс A1" in last_text(calls)
+    keyboard = [b for row in calls[-1].reply_markup.keyboard for b in row]
+    web = {b.text: b.web_app.url for b in keyboard if b.web_app}
+    assert set(web) == {"✅ Посещаемость", "📝 Недельный отчёт", "📚 Тема"}
+    assert web["✅ Посещаемость"].startswith("https://example.github.io/Repo/forms/attendance.html#d=")
+    assert repo.teacher(con, tid)["current_group_id"] == mine
     # подделанная кнопка чужой группы
     calls = run(chat.press(TEACHER_TG, f"t:group:{foreign}"))
     assert any(type(c).__name__ == "AnswerCallbackQuery" and c.show_alert for c in calls)
@@ -111,3 +116,32 @@ def test_rate_limit_ignores_flood(chat, con):
     repo.set_setting(con, OWNER, "rate_limit_per_min", "10")
     answered = sum(1 for _ in range(15) if run(chat.send(STRANGER, "/start")))
     assert answered == 10
+
+
+def test_teacher_sends_form_and_gets_fresh_keyboard(chat, con):
+    import json
+    import uuid
+    tid = make_teacher(con, TEACHER_TG)
+    gid = make_group(con, "10-А", teacher_id=tid)
+    from bot import schedule
+    sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, schedule.today())
+    data = json.dumps({"v": 1, "u": str(uuid.uuid4()), "t": "att", "g": gid,
+                       "d": schedule.today().isoformat(), "m": [[sid, 1]]})
+    chat.n += 1
+    from aiogram.types import Update
+    msg = chat._msg(TEACHER_TG, web_app_data={"data": data, "button_text": "✅ Посещаемость"})
+    start = len(chat.session.calls)
+    run(chat.dp.feed_update(chat.bot, Update(update_id=chat.n, message=msg)))
+    reply = chat.session.calls[start:][-1]
+    assert reply.text.startswith("Сохранено: посещаемость 10-А") and "опозданий 1" in reply.text
+    assert any(b.web_app for row in reply.reply_markup.keyboard for b in row)
+
+
+def test_stranger_form_data_is_ignored(chat, con):
+    from aiogram.types import Update
+    make_group(con)
+    msg = chat._msg(STRANGER, web_app_data={"data": '{"v":1}', "button_text": "x"})
+    start = len(chat.session.calls)
+    run(chat.dp.feed_update(chat.bot, Update(update_id=99, message=msg)))
+    assert "Нет доступа" in chat.session.calls[start:][-1].text
+    assert con.execute("SELECT count(*) FROM attendance").fetchone()[0] == 0

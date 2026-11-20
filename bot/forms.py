@@ -1,0 +1,295 @@
+"""Формы Mini App: что бот кладёт в ссылку кнопки и как проверяет присланные данные.
+
+Главное правило: форме ничего не доверяем. Всё, что пришло, проверяется заново по базе:
+схема и размер, допустимые значения, принадлежность группы учителю, запись каждого
+ученика в группу, даты, UUID отправки (повтор не создаёт дублей).
+"""
+
+import json
+import re
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
+
+from bot import repo, reports, schedule
+from bot.payload import SEND_DATA_LIMIT, byte_size, encode_param
+from bot.texts import t
+from bot.timefmt import human_time
+
+ATTENDANCE_DAYS_BACK = 7
+WEEKLY_WEEKS_BACK = 1          # можно заполнить текущую и прошлую неделю
+COMMENT_MAX = 80
+TOPIC_MAX = 100
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+LATE_DELIVERY_SECONDS = 60
+
+
+# ================================================================ данные для ссылок
+
+def _students(con, group_id: int) -> list:
+    return repo.group_students(con, group_id)
+
+
+def attendance_payload(con, g, lang: str, today: date, students=None) -> dict:
+    students = students if students is not None else _students(con, g["id"])
+    days = [today - timedelta(days=i) for i in range(ATTENDANCE_DAYS_BACK + 1)]
+    saved = reports.attendance_by_date(con, g["id"], days)
+    hist = {}
+    for back, day in enumerate(days):
+        marks = saved.get(day.isoformat())
+        if marks:
+            hist[str(back)] = "".join(str(reports.ATT_INDEX[marks[s["id"]]]) if s["id"] in marks else "-"
+                                      for s in students)
+    return {"v": 1, "f": "att", "gid": g["id"], "g": g["name"], "lang": lang, "today": today.isoformat(),
+            "days": g["weekdays"], "st": [[s["id"], repo.short_name(s["full_name"])] for s in students],
+            "h": hist}
+
+
+def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
+    students = students if students is not None else _students(con, g["id"])
+    questions = reports.questions_for(con, g["subject"])
+    current = reports.week_start(today)
+    weeks = [current - timedelta(weeks=i) for i in range(WEEKLY_WEEKS_BACK + 1)]
+    saved = reports.reports_for_weeks(con, g["id"], weeks)
+    before = reports.last_answers_before(con, g["id"], weeks[-1])
+
+    def code(answers: dict) -> str:
+        return "".join(str(answers[q["id"]]) if q["id"] in answers else "x" for q in questions)
+
+    answers, comments = {}, {}
+    for s in students:
+        per_week = {}
+        for back, week in enumerate(weeks):
+            item = saved.get(s["id"], {}).get(week.isoformat())
+            if item:
+                per_week[str(back)] = code(item["answers"])
+                if item["comment"]:
+                    comments.setdefault(str(back), []).append(s["id"])
+        if s["id"] in before:
+            per_week["p"] = code(before[s["id"]])  # последний отчёт до самой ранней недели
+        if per_week:
+            answers[str(s["id"])] = per_week
+    suffix = "uz" if lang == "uz" else "ru"
+    return {
+        "v": 1, "f": "wk", "gid": g["id"], "g": g["name"], "lang": lang, "wk": current.isoformat(),
+        "st": [[s["id"], repo.short_name(s["full_name"]), s["card_lang"]] for s in students],
+        "q": [[q["id"], q[f"text_{suffix}"], *[q[f"opt{i}_{suffix}"] for i in range(4)]] for q in questions],
+        "ph": [[p["text_ru"], p["text_uz"]] for p in reports.phrases(con)],
+        "a": answers, "c": comments,
+    }
+
+
+def topic_payload(con, g, lang: str) -> dict:
+    units = reports.topics_for_stage(con, g["stage_id"])
+    return {"v": 1, "f": "tp", "gid": g["id"], "g": g["name"], "lang": lang, "cur": g["current_topic"],
+            "u": [[u["id"], u["unit_no"], u["title"]] for u in units]}
+
+
+def form_url(base: str, page: str, payload: dict) -> str:
+    return f"{base}forms/{page}.html#d={encode_param(payload)}"
+
+
+def split_urls(base: str, page: str, builder, students: list, limit: int) -> list[str]:
+    """Ссылки формы: одна, а если не помещается — несколько частей по ученикам."""
+    parts = 1
+    while True:
+        size = -(-len(students) // parts) if students else 0
+        chunks = [students[i:i + size] for i in range(0, len(students), size)] if students else [[]]
+        urls = []
+        for i, chunk in enumerate(chunks):
+            payload = builder(chunk)
+            if len(chunks) > 1:
+                payload["part"] = [i + 1, len(chunks)]
+            urls.append(form_url(base, page, payload))
+        if max(len(u) for u in urls) <= limit or size <= 1:
+            return urls
+        parts += 1
+
+
+def group_keyboard(con, conf, g, lang: str, today: date | None = None) -> ReplyKeyboardMarkup:
+    today = today or schedule.today()
+    limit = repo.get_int(con, "url_safe_length", 1800)
+    students = _students(con, g["id"])
+    att = split_urls(conf.forms_url, "attendance",
+                     lambda chunk: attendance_payload(con, g, lang, today, chunk), students, limit)
+    wk = split_urls(conf.forms_url, "weekly",
+                    lambda chunk: weekly_payload(con, g, lang, today, chunk), students, limit)
+    rows = []
+    for i, url in enumerate(att):
+        text = t("btn_attendance", lang) + (f" {i + 1}/{len(att)}" if len(att) > 1 else "")
+        rows.append([KeyboardButton(text=text, web_app=WebAppInfo(url=url))])
+    wk_buttons = [KeyboardButton(text=t("btn_weekly", lang) if len(wk) == 1 else
+                                 t("btn_weekly_part", lang, i=i + 1, n=len(wk)), web_app=WebAppInfo(url=url))
+                  for i, url in enumerate(wk)]
+    rows[0] += wk_buttons[:1]
+    if len(wk_buttons) > 1:
+        rows.append(wk_buttons[1:])
+    rows.append([KeyboardButton(text=t("btn_topic", lang),
+                                web_app=WebAppInfo(url=form_url(conf.forms_url, "topic", topic_payload(con, g, lang))))])
+    rows.append([KeyboardButton(text=t("btn_other_group", lang))])
+    return ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True, keyboard=rows)
+
+
+# ================================================================ приём данных формы
+
+class FormError(Exception):
+    """Форма отклонена целиком. key — ключ текста причины (texts.py)."""
+
+    def __init__(self, key: str):
+        super().__init__(key)
+        self.key = key
+
+
+@dataclass
+class Result:
+    text: str
+    group_id: int | None = None
+    lines: list[str] = field(default_factory=list)
+
+
+def _ints(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _parse(raw: str) -> dict:
+    if byte_size(raw) > SEND_DATA_LIMIT:
+        raise FormError("err_bad_data")
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise FormError("err_bad_data") from None
+    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in ("att", "wk", "tp")
+            or not isinstance(data.get("u"), str) or not UUID_RE.match(data["u"])
+            or not _ints(data.get("g"))):
+        raise FormError("err_bad_data")
+    return data
+
+
+def _own_group(con, teacher, group_id: int):
+    g = repo.group(con, group_id)
+    if not g or not g["active"] or teacher is None or g["teacher_id"] != teacher["id"]:
+        raise FormError("err_not_your_group")
+    return g
+
+
+def _split_students(con, group_id: int, ids: list[int]) -> tuple[list[int], int]:
+    """Оставляет только учеников, которые сейчас записаны в группу."""
+    good = [sid for sid in ids if repo.is_enrolled(con, sid, group_id)]
+    return good, len(ids) - len(good)
+
+
+def _save_attendance(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    try:
+        day = date.fromisoformat(data.get("d", ""))
+    except (TypeError, ValueError):
+        raise FormError("err_bad_data") from None
+    if not today - timedelta(days=ATTENDANCE_DAYS_BACK) <= day <= today:
+        raise FormError("err_date")
+    marks = data.get("m")
+    if not isinstance(marks, list) or not marks or len(marks) > 200:
+        raise FormError("err_bad_data")
+    parsed = {}
+    for item in marks:
+        if (not isinstance(item, list) or len(item) != 2 or not _ints(item[0]) or not _ints(item[1])
+                or not 0 <= item[1] < len(reports.ATT_CODES) or item[0] in parsed):
+            raise FormError("err_bad_data")
+        parsed[item[0]] = reports.ATT_CODES[item[1]]
+    good, foreign = _split_students(con, g["id"], list(parsed))
+    if not good:
+        raise FormError("err_no_students")
+    reports.save_attendance(con, tg_id, g["id"], day, [(sid, parsed[sid]) for sid in good])
+    statuses = [parsed[sid] for sid in good]
+    lines = [t("saved_att", lang, group=g["name"], date=day.strftime("%d.%m"), n=len(good),
+               late=statuses.count("late"), absent=statuses.count("absent"))]
+    if foreign:
+        lines.append(t("skipped_foreign", lang, k=foreign))
+    return lines
+
+
+def _save_weekly(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    try:
+        week = date.fromisoformat(data.get("w", ""))
+    except (TypeError, ValueError):
+        raise FormError("err_bad_data") from None
+    current = reports.week_start(today)
+    if week.weekday() != 0 or not current - timedelta(weeks=WEEKLY_WEEKS_BACK) <= week <= current:
+        raise FormError("err_week")
+    qids = data.get("q")
+    allowed = [q["id"] for q in reports.questions_for(con, g["subject"])]
+    if not isinstance(qids, list) or qids != allowed:
+        raise FormError("err_questions")
+    rows = data.get("r")
+    if not isinstance(rows, list) or not rows or len(rows) > 200:
+        raise FormError("err_bad_data")
+    parsed = {}
+    for item in rows:
+        if (not isinstance(item, list) or len(item) != 3 or not _ints(item[0]) or item[0] in parsed
+                or not isinstance(item[1], str) or len(item[1]) != len(qids)
+                or any(ch not in "0123" for ch in item[1])
+                or not isinstance(item[2], str) or len(item[2]) > COMMENT_MAX):
+            raise FormError("err_bad_data")
+        parsed[item[0]] = ({qid: int(ch) for qid, ch in zip(qids, item[1])}, " ".join(item[2].split()))
+    good, foreign = _split_students(con, g["id"], list(parsed))
+    if not good:
+        raise FormError("err_no_students")
+    for sid in good:
+        reports.save_weekly(con, tg_id, g["id"], week, sid, *parsed[sid])
+    week_text = f"{week.strftime('%d.%m')}–{(week + timedelta(days=5)).strftime('%d.%m')}"
+    lines = [t("saved_wk", lang, group=g["name"], week=week_text, n=len(good))]
+    left = reports.students_without_report(con, g["id"], week)
+    if left:
+        names = ", ".join(repo.short_name(s["full_name"]) for s in left[:15]) + ("…" if len(left) > 15 else "")
+        lines.append(t("wk_left", lang, k=len(left), names=names))
+    else:
+        lines.append(t("wk_all_done", lang))
+    if foreign:
+        lines.append(t("skipped_foreign", lang, k=foreign))
+    return lines
+
+
+def _save_topic(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    unit = data.get("unit")
+    text = data.get("text")
+    if _ints(unit):
+        row = next((u for u in reports.topics_for_stage(con, g["stage_id"]) if u["id"] == unit), None)
+        if not row:
+            raise FormError("err_bad_data")
+        topic = f"Unit {row['unit_no']}. {row['title']}"[:TOPIC_MAX]
+    elif isinstance(text, str) and 0 < len(" ".join(text.split())) <= TOPIC_MAX:
+        topic = " ".join(text.split())
+    else:
+        raise FormError("err_bad_data")
+    reports.set_topic(con, g["id"], topic)
+    return [t("saved_topic", lang, group=g["name"], topic=topic)]
+
+
+SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic}
+
+
+def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime) -> Result:
+    """Проверяет и сохраняет данные формы. Возвращает ответ учителю (на его языке)."""
+    from bot.db import tx
+
+    lang = teacher["lang"] if teacher else "ru"
+    try:
+        data = _parse(raw)
+        if reports.submission_seen(con, data["u"]):
+            return Result(t("duplicate", lang), data["g"])
+        g = _own_group(con, teacher, data["g"])
+        today = now.astimezone(schedule.TZ).date()
+        with tx(con):
+            lines = SAVERS[data["t"]](con, teacher, g, data, tg_id, today, lang)
+            reports.record_submission(con, data["u"], tg_id, data["t"], "saved")
+    except FormError as e:
+        return Result(t("form_rejected", lang, reason=t(e.key, lang)), None)
+    if (now - sent_at).total_seconds() > LATE_DELIVERY_SECONDS:
+        lines.insert(0, t("late_delivery", lang, when=_when(sent_at, now, lang)))
+    return Result("\n".join(lines), g["id"], lines)
+
+
+def _when(sent_at: datetime, now: datetime, lang: str) -> str:
+    text = human_time(sent_at, now)
+    if lang == "uz":
+        text = text.replace("сегодня в", "bugun soat").replace("вчера в", "kecha soat").replace(" в ", " soat ")
+    return text

@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramUnauthorizedError
 from aiogram.types import BotCommand
 
 from bot import config as cfg
-from bot import db, keepawake, logsetup, single
+from bot import db, keepawake, logsetup, reminders, single
 from bot.app import build_dispatcher
 
 log = logging.getLogger("bot")
@@ -50,6 +50,7 @@ async def run(conf: cfg.Config) -> None:
     else:
         print("\n>>> В config.ini не вписан owner_id. Напишите боту /myid, впишите номер "
               "в config.ini и перезапустите start.bat\n")
+    reminder_task = asyncio.create_task(reminders.loop(bot, con))  # noqa: F841 — живёт, пока работает бот
     # Старые обновления не сбрасываются: формы, отправленные пока бот был выключен, обработаются
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
