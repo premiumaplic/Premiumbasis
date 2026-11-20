@@ -36,6 +36,8 @@ async def do_backup(bot: Bot, con, conf) -> str:
     except backup.BackupError as e:
         return str(e)
     repo.audit(con, conf.owner_id or 0, "backup", "", "manual")
+    from datetime import datetime
+    repo.set_setting(con, 0, "backup_ok", datetime.now().isoformat(timespec="seconds"), quiet=True)
     return report
 
 
@@ -63,9 +65,20 @@ async def status(message: Message, bot: Bot, con, conf) -> None:
     else:
         lines.append("Канал бэкапов: не выбран — добавьте бота администратором в закрытый канал")
     lines.append("Пароль бэкапа: " + ("задан ✅" if conf.backup_password else "⚠️ не задан (config.ini, [backup] password)"))
-    last = repo.get_setting(con, "backup_last")
-    lines.append(f"Последний ежедневный бэкап: {last.replace('T', ' ') if last else 'ещё не было'}")
+    ok = repo.get_setting(con, "backup_ok")
+    lines.append(f"Последний удачный бэкап: {ok.replace('T', ' ') if ok else 'ещё не было'}")
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("log"))
+async def last_log(message: Message) -> None:
+    """Последние строки журнала — чтобы переслать разработчику. Секреты из журнала уже вычищены."""
+    path = config.data_dir() / "logs" / "bot.log"
+    if not path.exists():
+        return await message.answer("Журнала пока нет.")
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-25:]
+    text = "\n".join(line[:300] for line in lines)
+    await message.answer("Последние строки журнала:\n\n" + text[-3800:])
 
 
 @router.message(Command("summary"))

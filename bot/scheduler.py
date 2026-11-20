@@ -61,6 +61,8 @@ async def tick(bot: Bot, con, conf, now: datetime | None = None) -> None:
                          quiet=True)
         try:
             report = await backup.run(bot, con, config.data_dir(), conf.backup_password, conf.backup_channel_id, "daily")
+            repo.set_setting(con, SYSTEM, "backup_ok", local.replace(tzinfo=None).isoformat(timespec="seconds"),
+                             quiet=True)
             log.info(report)
             if report.startswith("⚠️") and conf.owner_id:
                 await bot.send_message(conf.owner_id, report)

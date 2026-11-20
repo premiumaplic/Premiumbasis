@@ -276,3 +276,12 @@ def test_forward_from_group_is_explained(chat):
 def test_owner_status_command(chat):
     text = last_text(run(chat.send(OWNER, "/status")))
     assert "Версия бота" in text and "Канал бэкапов: не выбран" in text and "Пароль бэкапа: ⚠️ не задан" in text
+
+
+def test_owner_log_command(chat):
+    from bot import config as cfg
+    logs = cfg.data_dir() / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    (logs / "bot.log").write_text("строка 1\nИзменение участия бота: чат -100 (channel)\n", encoding="utf-8")
+    assert "Изменение участия бота" in last_text(run(chat.send(OWNER, "/log")))
+    assert "Последний удачный бэкап: ещё не было" in last_text(run(chat.send(OWNER, "/status")))
