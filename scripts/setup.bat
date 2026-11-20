@@ -41,10 +41,23 @@ function Fail($text) {
     Write-Host 'Установка остановлена. Сфотографируйте это окно и пришлите разработчику.'
     exit 1
 }
-function Download($url, $file) {
-    $wc = New-Object Net.WebClient
-    $wc.Headers.Add('User-Agent', 'SchoolBot-setup')
-    $wc.DownloadFile($url, $file)
+function Download($urls, $file, $what) {
+    # Пробуем адреса по очереди: если один сервер отказал, берём запасной
+    $last = ''
+    foreach ($url in @($urls)) {
+        Write-Host "   скачиваю: $url"
+        try {
+            $wc = New-Object Net.WebClient
+            $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SchoolBot-setup')
+            $wc.DownloadFile($url, $file)
+            return $url
+        } catch {
+            $last = $_.Exception.InnerException.Message
+            if (-not $last) { $last = $_.Exception.Message }
+            Write-Host "   не получилось: $last" -ForegroundColor Yellow
+        }
+    }
+    Fail "не удалось скачать $what ни с одного адреса. Проверьте интернет и попробуйте через час. Ошибка: $last"
 }
 function Unzip($zip, $dest) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -94,9 +107,13 @@ try {
     Step 'Скачиваю программу с GitHub'
     $codeZip = Join-Path $tmp 'code.zip'
     $codeDir = Join-Path $tmp 'code'
-    $url = "https://api.github.com/repos/$REPO/zipball"
-    if ($BRANCH) { $url = "$url/$BRANCH" }
-    Download $url $codeZip
+    # Основной адрес — обычный архив GitHub; служебный API (лимит 60 запросов в час) — запасной
+    $ref = 'HEAD'
+    if ($BRANCH) { $ref = $BRANCH }
+    $codeUrls = @("https://github.com/$REPO/archive/$ref.zip",
+                  "https://codeload.github.com/$REPO/zip/$ref",
+                  "https://api.github.com/repos/$REPO/zipball/$ref")
+    Download $codeUrls $codeZip 'программу с GitHub' | Out-Null
     Unzip $codeZip $codeDir
     $inner = Get-ChildItem $codeDir -Directory | Select-Object -First 1
     if (-not $inner -or -not (Test-Path (Join-Path $inner.FullName 'bot'))) { Fail 'в скачанном архиве нет программы.' }
@@ -112,13 +129,24 @@ try {
     if ($haveVersion -ne $PY_VERSION) {
         if (Test-Path $py) { Remove-Item $py -Recurse -Force }
         $pyZip = Join-Path $tmp 'python.zip'
-        Download "https://www.python.org/ftp/python/$PY_VERSION/python-$PY_VERSION-embed-amd64.zip" $pyZip
-        Unzip $pyZip $py
+        # Основной источник — python.org (embeddable), запасной — официальный пакет Python на NuGet
+        $used = Download @("https://www.python.org/ftp/python/$PY_VERSION/python-$PY_VERSION-embed-amd64.zip",
+                           "https://api.nuget.org/v3-flatcontainer/python/$PY_VERSION/python.$PY_VERSION.nupkg") $pyZip 'Python'
+        $short = 'python' + (($PY_VERSION -split '\.')[0..1] -join '')
+        if ($used -like '*.nupkg') {
+            $unpacked = Join-Path $tmp 'python-nuget'
+            Unzip $pyZip $unpacked
+            Move-Item (Join-Path $unpacked 'tools') $py
+            Remove-Item $unpacked -Recurse -Force
+            # Файл ._pth задаёт, где Python ищет модули: только внутри нашей папки
+            Set-Content -Encoding ASCII -Path (Join-Path $py "$short._pth") -Value @('Lib', 'DLLs', '.', '..\app', 'Lib\site-packages', 'import site')
+        } else {
+            Unzip $pyZip $py
+            $pth = Get-ChildItem (Join-Path $py 'python*._pth') | Select-Object -First 1
+            $stdZip = (Get-ChildItem (Join-Path $py 'python*.zip') | Select-Object -First 1).Name
+            Set-Content -Encoding ASCII -Path $pth.FullName -Value @($stdZip, '.', '..\app', 'Lib\site-packages', 'import site')
+        }
         Remove-Item $pyZip -Force
-        # Файл ._pth задаёт, где Python ищет модули: только внутри нашей папки
-        $pth = Get-ChildItem (Join-Path $py 'python*._pth') | Select-Object -First 1
-        $stdZip = (Get-ChildItem (Join-Path $py 'python*.zip') | Select-Object -First 1).Name
-        Set-Content -Encoding ASCII -Path $pth.FullName -Value @($stdZip, '.', '..\app', 'Lib\site-packages', 'import site')
         Write-Host 'Python распакован.'
     } else {
         Write-Host 'Python уже установлен.'
@@ -132,7 +160,7 @@ try {
     $ErrorActionPreference = 'Stop'
     if ($pipMissing) {
         $getPip = Join-Path $tmp 'get-pip.py'
-        Download 'https://bootstrap.pypa.io/get-pip.py' $getPip
+        Download @('https://bootstrap.pypa.io/get-pip.py', 'https://bootstrap.pypa.io/pip/get-pip.py') $getPip 'установщик pip' | Out-Null
         RunPy $getPip
         Remove-Item $getPip -Force
     }

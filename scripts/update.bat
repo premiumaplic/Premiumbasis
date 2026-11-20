@@ -39,10 +39,23 @@ function Fail($text) {
     Write-Host 'Обновление остановлено. Сфотографируйте это окно и пришлите разработчику.'
     exit 1
 }
-function Download($url, $file) {
-    $wc = New-Object Net.WebClient
-    $wc.Headers.Add('User-Agent', 'SchoolBot-update')
-    $wc.DownloadFile($url, $file)
+function Download($urls, $file, $what) {
+    # Пробуем адреса по очереди: если один сервер отказал, берём запасной
+    $last = ''
+    foreach ($url in @($urls)) {
+        Write-Host "   скачиваю: $url"
+        try {
+            $wc = New-Object Net.WebClient
+            $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SchoolBot-setup')
+            $wc.DownloadFile($url, $file)
+            return $url
+        } catch {
+            $last = $_.Exception.InnerException.Message
+            if (-not $last) { $last = $_.Exception.Message }
+            Write-Host "   не получилось: $last" -ForegroundColor Yellow
+        }
+    }
+    Fail "не удалось скачать $what ни с одного адреса. Проверьте интернет и попробуйте через час. Ошибка: $last"
 }
 function Unzip($zip, $dest) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -93,9 +106,13 @@ try {
     Step 'Скачиваю новую версию программы'
     $codeZip = Join-Path $tmp 'code.zip'
     $codeDir = Join-Path $tmp 'code'
-    $url = "https://api.github.com/repos/$REPO/zipball"
-    if ($BRANCH) { $url = "$url/$BRANCH" }
-    Download $url $codeZip
+    # Основной адрес — обычный архив GitHub; служебный API (лимит 60 запросов в час) — запасной
+    $ref = 'HEAD'
+    if ($BRANCH) { $ref = $BRANCH }
+    $codeUrls = @("https://github.com/$REPO/archive/$ref.zip",
+                  "https://codeload.github.com/$REPO/zip/$ref",
+                  "https://api.github.com/repos/$REPO/zipball/$ref")
+    Download $codeUrls $codeZip 'программу с GitHub' | Out-Null
     Unzip $codeZip $codeDir
     $inner = Get-ChildItem $codeDir -Directory | Select-Object -First 1
     if (-not $inner -or -not (Test-Path (Join-Path $inner.FullName 'bot'))) { Fail 'в скачанном архиве нет программы.' }
