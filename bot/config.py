@@ -91,3 +91,30 @@ def load(path: Path | None = None) -> Config:
         backup_password=get("backup", "password"),
         testers=_parse_ids(get("probe", "testers")),
     )
+
+
+def save_value(section: str, key: str, value: str, path: Path | None = None) -> None:
+    """Записывает одно значение в config.ini, не трогая остальной текст и комментарии."""
+    path = path or root_dir() / "config.ini"
+    text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+    lines = text.splitlines()
+    current, section_end, done = None, None, False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if current == section and not done:
+                section_end = i
+                break
+            current = stripped[1:-1].strip()
+            continue
+        if current == section and re.match(rf"^\s*{re.escape(key)}\s*=", line):
+            lines[i] = f"{key} = {value}"
+            done = True
+    if not done:
+        if current == section and section_end is None:
+            lines.append(f"{key} = {value}")
+        elif section_end is not None:
+            lines.insert(section_end, f"{key} = {value}")
+        else:
+            lines += ["", f"[{section}]", f"{key} = {value}"]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\r\n")  # переводы строк Windows

@@ -51,6 +51,23 @@ async def backup_button(cb: CallbackQuery, bot: Bot, con, conf) -> None:
     await cb.message.answer(await do_backup(bot, con, conf), reply_markup=kb([("⬅️ Меню", A(act="menu"))]))
 
 
+@router.message(Command("status"))
+async def status(message: Message, bot: Bot, con, conf) -> None:
+    """Состояние бота для проверки: версия, канал бэкапов, пароль, последний бэкап."""
+    from bot import __version__
+    lines = [f"Версия бота: {__version__}", f"Ваш ID (владелец): {conf.owner_id}"]
+    if conf.backup_channel_id:
+        problem = await backup.check_channel(bot, conf.backup_channel_id)
+        lines.append(f"Канал бэкапов: {conf.backup_channel_id} — " + ("бот может публиковать ✅" if not problem
+                                                                     else "⚠️ " + problem))
+    else:
+        lines.append("Канал бэкапов: не выбран — добавьте бота администратором в закрытый канал")
+    lines.append("Пароль бэкапа: " + ("задан ✅" if conf.backup_password else "⚠️ не задан (config.ini, [backup] password)"))
+    last = repo.get_setting(con, "backup_last")
+    lines.append(f"Последний ежедневный бэкап: {last.replace('T', ' ') if last else 'ещё не было'}")
+    await message.answer("\n".join(lines))
+
+
 @router.message(Command("summary"))
 @router.callback_query(A.filter(F.act == "summary"))
 async def summary_now(event, con) -> None:

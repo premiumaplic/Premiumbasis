@@ -7,6 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 
+from bot import config as cfg
 from bot.texts import t
 
 log = logging.getLogger("bot")
@@ -26,15 +27,25 @@ async def show(target, text: str, markup=None) -> None:
         await target.answer(text, reply_markup=markup)
 
 
-def channel_text(title: str, chat_id: int, can_post: bool, already: bool) -> str:
-    lines = [f"ID канала «{title}»: {chat_id}"]
-    if already:
-        lines.append("Этот канал уже указан в config.ini — всё в порядке.")
+def remember_channel(conf, title: str, chat_id: int, can_post: bool) -> str:
+    """Запоминает канал бэкапов: записывает ID в config.ini и сразу начинает им пользоваться."""
+    lines = []
+    if conf is not None and conf.backup_channel_id == chat_id:
+        lines.append(f"Канал «{title}» уже выбран для бэкапов (ID {chat_id}).")
     else:
-        lines += ["Откройте config.ini и впишите строку:", f"backup_channel_id = {chat_id}",
-                  "Сохраните файл и перезапустите бота (закройте окно и снова start.bat)."]
+        try:
+            cfg.save_value("telegram", "backup_channel_id", str(chat_id))
+            if conf is not None:
+                conf.backup_channel_id = chat_id
+            lines.append(f"✅ Канал «{title}» выбран для бэкапов. ID {chat_id} записан в config.ini — "
+                         "вписывать ничего не нужно.")
+        except OSError:
+            lines += [f"ID канала «{title}»: {chat_id}", "Не смог записать config.ini — впишите строку сами:",
+                      f"backup_channel_id = {chat_id}", "и перезапустите бота."]
     if not can_post:
         lines.append("⚠️ У бота нет права публиковать сообщения в канале — включите его в правах администратора.")
+    else:
+        lines.append("Проверьте: меню → 💾 Бэкап сейчас.")
     return "\n".join(lines)
 
 
@@ -42,6 +53,9 @@ def channel_text(title: str, chat_id: int, can_post: bool, already: bool) -> str
 async def membership(event: ChatMemberUpdated, bot: Bot, conf=None) -> None:
     owner = conf.owner_id if conf else None
     added_by_owner = owner is not None and event.from_user and event.from_user.id == owner
+    log.info("Изменение участия бота: чат %s (%s), статус %s, кто изменил %s, владелец ли: %s",
+             event.chat.id, event.chat.type, event.new_chat_member.status,
+             event.from_user.id if event.from_user else "?", added_by_owner)
     # Бот работает только в личных чатах: из групп выходит сразу (канал бэкапов — исключение)
     if event.chat.type in ("group", "supergroup"):
         if event.new_chat_member.status in ("left", "kicked"):
@@ -60,18 +74,23 @@ async def membership(event: ChatMemberUpdated, bot: Bot, conf=None) -> None:
     if event.chat.type == "channel" and added_by_owner and event.new_chat_member.status == "administrator":
         # Бота сделали администратором канала — сразу сообщаем владельцу ID для config.ini
         can_post = bool(getattr(event.new_chat_member, "can_post_messages", False))
-        await bot.send_message(owner, channel_text(event.chat.title or "", event.chat.id, can_post,
-                                                   conf.backup_channel_id == event.chat.id))
+        await bot.send_message(owner, remember_channel(conf, event.chat.title or "", event.chat.id, can_post))
 
 
 @router.message(F.forward_origin)
-async def forwarded(message: Message, is_owner: bool = False, lang: str = "ru") -> None:
-    """Владелец пересылает сообщение из канала — бот подсказывает ID для config.ini."""
+async def forwarded(message: Message, bot: Bot, conf=None, is_owner: bool = False, lang: str = "ru") -> None:
+    """Владелец пересылает сообщение из канала — бот запоминает этот канал для бэкапов."""
     if not is_owner:
         return await message.answer(t("press_button", lang))
     origin = message.forward_origin
+    log.info("Владелец переслал сообщение, источник: %s", origin.type)
     if origin.type == "channel":
-        return await message.answer(channel_text(origin.chat.title or "", origin.chat.id, True, False))
+        from bot import backup
+        problem = await backup.check_channel(bot, origin.chat.id)
+        text = remember_channel(conf, origin.chat.title or "", origin.chat.id, problem is None)
+        if problem and "не видит канал" in problem:
+            text += "\n⚠️ " + problem
+        return await message.answer(text)
     if origin.type == "chat":
         return await message.answer("Это сообщение из группы, а для бэкапов нужен закрытый КАНАЛ. "
                                     "Создайте канал, добавьте меня туда администратором — я сам пришлю ID.")

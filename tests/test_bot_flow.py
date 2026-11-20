@@ -222,7 +222,7 @@ def test_forwarded_channel_post_shows_channel_id(chat):
         "chat": {"id": -1001234567890, "type": "channel", "title": "Бэкапы"}})
     start = len(chat.session.calls)
     run(chat.dp.feed_update(chat.bot, Update(update_id=500, message=msg)))
-    assert "backup_channel_id = -1001234567890" in chat.session.calls[start:][-1].text
+    assert "Канал «Бэкапы» выбран для бэкапов" in chat.session.calls[start:][-1].text
 
 
 def _membership(chat, chat_obj, status, rights=None):
@@ -247,11 +247,14 @@ def test_bot_added_to_channel_tells_owner_the_id(chat):
     calls = _membership(chat, {"id": -1009876543210, "type": "channel", "title": "Бэкапы"}, "administrator",
                         {"can_post_messages": True})
     msg = [c for c in calls if type(c).__name__ == "SendMessage"][-1]
-    assert msg.chat_id == OWNER and "backup_channel_id = -1009876543210" in msg.text
+    assert msg.chat_id == OWNER and "записан в config.ini" in msg.text
     assert "нет права публиковать" not in msg.text
+    from bot import config as cfg
+    assert "backup_channel_id = -1009876543210" in (cfg.root_dir() / "config.ini").read_text(encoding="utf-8")
     calls = _membership(chat, {"id": -1009876543210, "type": "channel", "title": "Бэкапы"}, "administrator",
                         {"can_post_messages": False})
-    assert "нет права публиковать" in [c for c in calls if type(c).__name__ == "SendMessage"][-1].text
+    last = [c for c in calls if type(c).__name__ == "SendMessage"][-1].text
+    assert "уже выбран" in last and "нет права публиковать" in last
 
 
 def test_bot_added_to_group_leaves_and_explains(chat):
@@ -268,3 +271,8 @@ def test_forward_from_group_is_explained(chat):
     start = len(chat.session.calls)
     run(chat.dp.feed_update(chat.bot, Update(update_id=901, message=msg)))
     assert "нужен закрытый КАНАЛ" in chat.session.calls[start:][-1].text
+
+
+def test_owner_status_command(chat):
+    text = last_text(run(chat.send(OWNER, "/status")))
+    assert "Версия бота" in text and "Канал бэкапов: не выбран" in text and "Пароль бэкапа: ⚠️ не задан" in text

@@ -5,7 +5,7 @@ import datetime as dt
 import pytest
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
-from aiogram.types import Message, Update
+from aiogram.types import ChatMemberAdministrator, Message, Update, User
 
 from bot import db, repo
 
@@ -47,6 +47,14 @@ class FakeSession(BaseSession):
                 {"message_id": len(self.calls), "date": dt.datetime.now(),
                  "chat": {"id": chat_id, "type": "private"}, "text": getattr(method, "text", None) or ""},
                 context={"bot": bot})
+        if name == "GetMe":
+            return User(id=42, is_bot=True, first_name="SchoolBot", username="school_test_bot")
+        if name == "GetChatMember":
+            return ChatMemberAdministrator.model_validate({
+                "status": "administrator", "user": {"id": 42, "is_bot": True, "first_name": "Bot"},
+                **{k: False for k in ChatMemberAdministrator.model_fields
+                   if k.startswith("can_") or k == "is_anonymous"},
+                "can_post_messages": True})
         return True
 
     async def close(self):

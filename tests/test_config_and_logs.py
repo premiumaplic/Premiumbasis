@@ -45,3 +45,15 @@ def test_password_never_in_log():
     record = logging.LogRecord("x", logging.INFO, "", 0, "pw=Secret-Pass-1", None, None)
     SecretFilter(["Secret-Pass-1"]).filter(record)
     assert "Secret-Pass-1" not in record.getMessage()
+
+
+def test_save_value_keeps_comments(tmp_path):
+    path = write(tmp_path, f"; комментарий\n[telegram]\ntoken = {FAKE_TOKEN}\n; ID канала\nbackup_channel_id =\n\n[backup]\npassword = x\n")
+    cfg.save_value("telegram", "backup_channel_id", "-100123", path)
+    text = path.read_text(encoding="utf-8")
+    assert "backup_channel_id = -100123" in text and "; ID канала" in text and "password = x" in text
+    assert cfg.load(path).backup_channel_id == -100123
+    cfg.save_value("forms", "base_url", "https://example.org/", path)
+    assert cfg.load(path).forms_url == "https://example.org/"
+    cfg.save_value("telegram", "owner_id", "77", path)          # ключа не было — добавится в свой раздел
+    assert cfg.load(path).owner_id == 77
