@@ -282,7 +282,15 @@
       notInTelegram: "Это просмотр формы. Сохранять можно только из Telegram.",
       broken: "Данные в ссылке повреждены. Откройте форму кнопкой в чате бота.",
       noData: "Откройте форму кнопкой в чате бота.",
-      demo: "Демо: все имена выдуманы"
+      demo: "Демо: все имена выдуманы",
+      exam: "Экзамен", decision: "Решение по станции", passScore: "Проходной балл: {p} из {m}",
+      scoresUnset: "Владелец ещё не задал проходной и максимальный балл для этой станции. Попросите его: меню → 🎯 Баллы экзаменов.",
+      moves: "Переходит", repeat: "Повтор", stays: "Остаётся", changeDecision: "Изменить решение",
+      reason: "Причина (обязательно)", reasonPh: "Почему решение отличается от балла",
+      otherStage: "на другой станции", path: "Путь после B2", later: "Позже",
+      teacherHint: "Переход на этой станции решает учитель. Отметьте, кто переходит дальше.",
+      scoreHint: "Введите баллы — решение подставится само", needReason: "Укажите причину, где решение изменено",
+      endOfRoute: "конец пути", enterScores: "Введите хотя бы один балл"
     },
     uz: {
       save: "Saqlash", saveN: "Saqlash · {n}", next: "Keyingisi", toList: "Roʻyxatga",
@@ -306,7 +314,15 @@
       notInTelegram: "Bu shaklni koʻrish. Faqat Telegram orqali saqlash mumkin.",
       broken: "Havoladagi maʼlumotlar buzilgan. Shaklni bot chatidagi tugma orqali oching.",
       noData: "Shaklni bot chatidagi tugma orqali oching.",
-      demo: "Demo: barcha ismlar oʻylab topilgan"
+      demo: "Demo: barcha ismlar oʻylab topilgan",
+      exam: "Imtihon", decision: "Bosqich boʻyicha qaror", passScore: "Oʻtish bali: {m} dan {p}",
+      scoresUnset: "Markaz egasi bu bosqich uchun oʻtish va maksimal ballni hali kiritmagan.",
+      moves: "Oʻtadi", repeat: "Qayta", stays: "Qoladi", changeDecision: "Qarorni oʻzgartirish",
+      reason: "Sabab (majburiy)", reasonPh: "Nega qaror balldan farq qiladi",
+      otherStage: "boshqa bosqichda", path: "B2 dan keyingi yoʻl", later: "Keyinroq",
+      teacherHint: "Bu bosqichda oʻtishni oʻqituvchi hal qiladi. Kim oʻtishini belgilang.",
+      scoreHint: "Ballarni kiriting — qaror oʻzi qoʻyiladi", needReason: "Qaror oʻzgartirilgan joyda sababini yozing",
+      endOfRoute: "yoʻl oxiri", enterScores: "Kamida bitta ball kiriting"
     }
   };
   var lang = "ru";

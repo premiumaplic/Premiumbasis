@@ -95,7 +95,8 @@ def test_teacher_sees_only_own_groups(chat, con):
     assert "Группа 10-А · Курс A1" in last_text(calls)
     keyboard = [b for row in calls[-1].reply_markup.keyboard for b in row]
     web = {b.text: b.web_app.url for b in keyboard if b.web_app}
-    assert set(web) == {"✅ Посещаемость", "📝 Недельный отчёт", "📚 Тема"}
+    assert set(web) == {"✅ Посещаемость", "📝 Недельный отчёт", "🎓 Экзамен", "📚 Тема"}
+    assert "📤 Карточки для родителей" in [b.text for b in keyboard]
     assert web["✅ Посещаемость"].startswith("https://example.github.io/Repo/forms/attendance.html#d=")
     assert repo.teacher(con, tid)["current_group_id"] == mine
     # подделанная кнопка чужой группы
@@ -145,3 +146,25 @@ def test_stranger_form_data_is_ignored(chat, con):
     run(chat.dp.feed_update(chat.bot, Update(update_id=99, message=msg)))
     assert "Нет доступа" in chat.session.calls[start:][-1].text
     assert con.execute("SELECT count(*) FROM attendance").fetchone()[0] == 0
+
+
+def test_cards_for_parents(chat, con):
+    from bot import reports, schedule
+    tid = make_teacher(con, TEACHER_TG)
+    gid = make_group(con, "10-А", teacher_id=tid)
+    today = schedule.today()
+    a = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, today)
+    repo.add_student(con, OWNER, "Мадина Юсупова", "uz", True, gid, today)
+    c = repo.add_student(con, OWNER, "Жасур Ахмедов", "ru", False, gid, today)   # нет согласия
+    week = reports.week_start(today)
+    for sid in (a, c):
+        reports.save_weekly(con, TEACHER_TG, gid, week, sid, {1: 3, 2: 2}, "")
+    assert "Сначала выберите группу" in last_text(run(chat.send(TEACHER_TG, "📤 Карточки для родителей")))
+    run(chat.press(TEACHER_TG, f"t:group:{gid}"))
+    calls = run(chat.send(TEACHER_TG, "📤 Карточки для родителей"))
+    photos = [x for x in calls if type(x).__name__ == "SendPhoto"]
+    assert len(photos) == 1 and photos[0].caption.startswith("Азиз Каримов — неделя")
+    final = last_text(calls)
+    assert "карточек 1" in final
+    assert "Мадина Юсупова — нет отчёта за неделю" in final
+    assert "Жасур Ахмедов — нет отметки о согласии родителя" in final

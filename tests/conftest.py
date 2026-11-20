@@ -41,11 +41,11 @@ class FakeSession(BaseSession):
     async def make_request(self, bot, method, timeout=None):
         self.calls.append(method)
         name = type(method).__name__
-        if name in ("SendMessage", "EditMessageText", "SendDocument"):
+        if name in ("SendMessage", "EditMessageText", "SendDocument", "SendPhoto"):
             chat_id = getattr(method, "chat_id", None) or 1
             return Message.model_validate(
                 {"message_id": len(self.calls), "date": dt.datetime.now(),
-                 "chat": {"id": chat_id, "type": "private"}, "text": getattr(method, "text", "") or ""},
+                 "chat": {"id": chat_id, "type": "private"}, "text": getattr(method, "text", None) or ""},
                 context={"bot": bot})
         return True
 

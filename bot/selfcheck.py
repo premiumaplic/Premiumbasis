@@ -64,6 +64,11 @@ def main() -> int:
         plt.close(fig)
         Image.open(io.BytesIO(buf.getvalue())).verify()
 
+    def card_font():
+        from bot.card import FONTS, font
+        assert (FONTS / "Nunito_900Black.ttf").exists(), "нет шрифта для карточек"
+        font(900, 40).getbbox("Oʻgʻil Жж")
+
     def excel():
         import openpyxl
         wb = openpyxl.Workbook()
@@ -91,6 +96,7 @@ def main() -> int:
     check("часовой пояс Ташкента", timezone)
     check("связь с Telegram (aiogram, ssl)", network_libs)
     check("рисование (matplotlib, Pillow)", drawing)
+    check("шрифт карточек (кириллица, oʻ gʻ)", card_font)
     check("Excel (openpyxl)", excel)
     check("шифрованный архив (pyzipper)", encrypted_zip)
     print("Всё в порядке." if not failed else f"Есть ошибки: {failed}.")

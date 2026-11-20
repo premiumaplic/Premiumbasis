@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
-from bot import repo, reports, schedule
+from bot import exams, progress, repo, reports, schedule
 from bot.payload import SEND_DATA_LIMIT, byte_size, encode_param
 from bot.texts import t
 from bot.timefmt import human_time
@@ -86,6 +86,33 @@ def topic_payload(con, g, lang: str) -> dict:
             "u": [[u["id"], u["unit_no"], u["title"]] for u in units]}
 
 
+def exam_payload(con, g, lang: str, today: date) -> dict | None:
+    """Форма экзамена (или решения учителя на станциях без экзамена). None — у группы нет карты."""
+    stage = repo.stage(con, g["stage_id"])
+    if not g["has_map"] or stage is None:
+        return None
+    suffix = "uz" if lang == "uz" else "ru"
+    nxt = progress.next_stage(con, stage)
+    students = _students(con, g["id"])
+    exam = con.execute("SELECT id FROM exams WHERE group_id = ? AND stage_id = ? AND exam_date = ?",
+                       (g["id"], stage["id"], today.isoformat())).fetchone()
+    prev = {}
+    if exam:
+        for r in con.execute("SELECT student_id, score, decision, reason FROM exam_results WHERE exam_id = ?",
+                             (exam["id"],)):
+            prev[str(r["student_id"])] = [r["score"], 1 if r["decision"] == "pass" else 0]
+    st = []
+    for s in students:
+        cur = repo.current_stage(con, s["id"], g["subject"])
+        st.append([s["id"], repo.short_name(s["full_name"]), 1 if cur and cur["stage_id"] == stage["id"] else 0])
+    return {
+        "v": 1, "f": "ex", "gid": g["id"], "g": g["name"], "lang": lang, "s": stage["id"],
+        "sn": stage[f"name_{suffix}"], "nx": nxt[f"name_{suffix}"] if nxt else None,
+        "fork": progress.is_fork(con, stage), "mode": "score" if stage["exam_transition"] else "teacher",
+        "pass": stage["pass_score"], "max": stage["max_score"], "st": st, "prev": prev,
+    }
+
+
 def form_url(base: str, page: str, payload: dict) -> str:
     return f"{base}forms/{page}.html#d={encode_param(payload)}"
 
@@ -125,8 +152,15 @@ def group_keyboard(con, conf, g, lang: str, today: date | None = None) -> ReplyK
     rows[0] += wk_buttons[:1]
     if len(wk_buttons) > 1:
         rows.append(wk_buttons[1:])
-    rows.append([KeyboardButton(text=t("btn_topic", lang),
-                                web_app=WebAppInfo(url=form_url(conf.forms_url, "topic", topic_payload(con, g, lang))))])
+    third = []
+    exam = exam_payload(con, g, lang, today)
+    if exam:
+        third.append(KeyboardButton(text=t("btn_exam", lang),
+                                    web_app=WebAppInfo(url=form_url(conf.forms_url, "exam", exam))))
+    third.append(KeyboardButton(text=t("btn_topic", lang),
+                                web_app=WebAppInfo(url=form_url(conf.forms_url, "topic", topic_payload(con, g, lang)))))
+    rows.append(third)
+    rows.append([KeyboardButton(text=t("btn_cards", lang))])
     rows.append([KeyboardButton(text=t("btn_other_group", lang))])
     return ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True, keyboard=rows)
 
@@ -159,7 +193,7 @@ def _parse(raw: str) -> dict:
         data = json.loads(raw)
     except ValueError:
         raise FormError("err_bad_data") from None
-    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in ("att", "wk", "tp")
+    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in ("att", "wk", "tp", "ex")
             or not isinstance(data.get("u"), str) or not UUID_RE.match(data["u"])
             or not _ints(data.get("g"))):
         raise FormError("err_bad_data")
@@ -264,7 +298,86 @@ def _save_topic(con, teacher, g, data, tg_id: int, today: date, lang: str) -> li
     return [t("saved_topic", lang, group=g["name"], topic=topic)]
 
 
-SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic}
+def _num(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _save_exam(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    stage = repo.stage(con, data.get("s")) if _ints(data.get("s")) else None
+    if stage is None or not g["has_map"] or stage["subject"] != g["subject"]:
+        raise FormError("err_bad_data")
+    # Исправление сегодняшнего экзамена, после которого группа уже перешла на следующую станцию
+    advanced_today = g["stage_id"] != stage["id"] and con.execute(
+        "SELECT 1 FROM student_stage n JOIN enrollments e ON e.student_id = n.student_id "
+        "AND e.group_id = ? AND e.date_to IS NULL "
+        "WHERE n.stage_id = ? AND n.status = 'current' AND n.date_from = ? AND EXISTS ("
+        "  SELECT 1 FROM student_stage p WHERE p.student_id = n.student_id AND p.stage_id = ? AND p.status = 'done')",
+        (g["id"], g["stage_id"], today.isoformat(), stage["id"])).fetchone() is not None
+    if stage["id"] != g["stage_id"] and not advanced_today:
+        raise FormError("err_stage")
+    by_score = bool(stage["exam_transition"])
+    if by_score and (stage["pass_score"] is None or stage["max_score"] is None):
+        raise FormError("err_scores_unset")
+    rows = data.get("r")
+    if not isinstance(rows, list) or not rows or len(rows) > 200:
+        raise FormError("err_bad_data")
+    parsed = {}
+    for item in rows:
+        if (not isinstance(item, list) or len(item) != 5 or not _ints(item[0]) or item[0] in parsed
+                or item[2] not in (0, 1) or not isinstance(item[3], str) or len(item[3]) > 100
+                or item[4] not in ("", "cefr", "ielts")):
+            raise FormError("err_bad_data")
+        score, passed, reason = item[1], bool(item[2]), " ".join(item[3].split())
+        if by_score:
+            if not _num(score) or not 0 <= score <= stage["max_score"]:
+                raise FormError("err_bad_data")
+            if exams.auto_decision(score, stage["pass_score"]) != ("pass" if passed else "repeat") and len(reason) < 3:
+                raise FormError("err_reason")
+        elif score is not None:
+            raise FormError("err_bad_data")
+        parsed[item[0]] = (score, passed, reason, item[4] or None)
+    good, foreign = _split_students(con, g["id"], list(parsed))
+    if not good:
+        raise FormError("err_no_students")
+
+    exam_id = exams.save_exam(con, g["id"], stage, today, tg_id) if by_score else None
+    passed_names, repeat_names, fork_names, other_names = [], [], [], []
+    for sid in good:
+        score, passed, reason, path = parsed[sid]
+        name = repo.short_name(repo.student(con, sid)["full_name"])
+        cur = repo.current_stage(con, sid, g["subject"])
+        moved_today = cur is not None and cur["date_from"] == today.isoformat() and \
+            progress.next_stage(con, stage, cur["path"]) is not None and \
+            cur["stage_id"] == progress.next_stage(con, stage, cur["path"])["id"]
+        if cur is None or (cur["stage_id"] != stage["id"] and not moved_today):
+            other_names.append(name)
+            continue
+        if by_score:
+            decision = "pass" if passed else "repeat"
+            exams.save_result(con, exam_id, sid, float(score), decision, reason, tg_id)
+        outcome = exams.apply_decision(con, sid, stage, passed, path, today)
+        if outcome == "fork_wait":
+            fork_names.append(name)
+        (passed_names if passed else repeat_names).append(name)
+    suffix = "uz" if lang == "uz" else "ru"
+    key = "saved_exam" if by_score else "saved_decision"
+    lines = [t(key, lang, group=g["name"], stage=stage[f"name_{suffix}"],
+               passed=len(passed_names), repeat=len(repeat_names))]
+    nxt = exams.maybe_advance_group(con, g, stage, len(passed_names), len(passed_names) + len(repeat_names))
+    if nxt:
+        lines.append(t("group_advanced", lang, stage=nxt[f"name_{suffix}"]))
+    if repeat_names and by_score:
+        lines.append(t("repeat_names", lang, names=", ".join(repeat_names)))
+    if fork_names:
+        lines.append(t("fork_wait", lang, names=", ".join(fork_names)))
+    if other_names:
+        lines.append(t("other_stage", lang, names=", ".join(other_names)))
+    if foreign:
+        lines.append(t("skipped_foreign", lang, k=foreign))
+    return lines
+
+
+SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic, "ex": _save_exam}
 
 
 def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime) -> Result:

@@ -70,6 +70,50 @@ TEXTS = {
     "err_questions": {"ru": "вопросы недели изменились — откройте форму заново.",
                       "uz": "hafta savollari oʻzgardi — shaklni qayta oching."},
     "err_no_students": {"ru": "ни один ученик не из этой группы.", "uz": "birorta oʻquvchi bu guruhdan emas."},
+    "btn_exam": {"ru": "🎓 Экзамен", "uz": "🎓 Imtihon"},
+    "btn_cards": {"ru": "📤 Карточки для родителей", "uz": "📤 Ota-onalar uchun kartalar"},
+    "saved_exam": {
+        "ru": "Сохранено: экзамен {group}, {stage} — сдали {passed}, повтор {repeat}.",
+        "uz": "Saqlandi: {group} imtihoni, {stage} — topshirdi {passed}, qayta {repeat}.",
+    },
+    "saved_decision": {
+        "ru": "Сохранено: решение по станции {stage} ({group}) — переходят {passed}, остаются {repeat}.",
+        "uz": "Saqlandi: {stage} bosqichi boʻyicha qaror ({group}) — oʻtadi {passed}, qoladi {repeat}.",
+    },
+    "group_advanced": {"ru": "Группа переходит на станцию {stage}.", "uz": "Guruh {stage} bosqichiga oʻtadi."},
+    "repeat_names": {
+        "ru": "Остаются на повтор: {names}. Владельцу стоит решить, в какую группу их перевести.",
+        "uz": "Qayta oʻqiydi: {names}. Ularni qaysi guruhga oʻtkazishni markaz egasi hal qiladi.",
+    },
+    "fork_wait": {
+        "ru": "Сдали, но путь не выбран: {names}. Выберите CEFR или IELTS (владелец: карточка ученика → Станция).",
+        "uz": "Topshirdi, lekin yoʻl tanlanmagan: {names}. CEFR yoki IELTSni tanlang (markaz egasi orqali).",
+    },
+    "other_stage": {
+        "ru": "Не учтены (стоят на другой станции): {names}.",
+        "uz": "Hisobga olinmadi (boshqa bosqichda): {names}.",
+    },
+    "err_scores_unset": {
+        "ru": "для этой станции владелец ещё не задал проходной и максимальный балл.",
+        "uz": "bu bosqich uchun markaz egasi oʻtish va maksimal ballni hali kiritmagan.",
+    },
+    "err_reason": {
+        "ru": "если решение отличается от балла, укажите причину.",
+        "uz": "qaror balldan farq qilsa, sababini yozing.",
+    },
+    "err_stage": {"ru": "станция группы изменилась — откройте форму заново.",
+                  "uz": "guruh bosqichi oʻzgardi — shaklni qayta oching."},
+    "cards_none": {
+        "ru": "Карточек нет: за неделю {week} ещё нет ни одного заполненного отчёта.",
+        "uz": "Kartalar yoʻq: {week} haftasi uchun hali birorta hisobot toʻldirilmagan.",
+    },
+    "cards_caption": {"ru": "{name} — неделя {week}", "uz": "{name} — {week} haftasi"},
+    "cards_done": {"ru": "Готово: карточек {n}. Перешлите каждую родителю.", "uz": "Tayyor: {n} ta karta. Har birini ota-onaga yuboring."},
+    "cards_skipped": {"ru": "Без карточки:", "uz": "Kartasiz:"},
+    "cards_no_report": {"ru": "нет отчёта за неделю", "uz": "hafta hisoboti yoʻq"},
+    "cards_no_consent": {"ru": "нет отметки о согласии родителя", "uz": "ota-ona roziligi belgilanmagan"},
+    "cards_wait": {"ru": "Рисую карточки: {n} шт…", "uz": "Kartalar tayyorlanmoqda: {n} ta…"},
+    "choose_group_first": {"ru": "Сначала выберите группу: /start", "uz": "Avval guruhni tanlang: /start"},
     "reminder": {
         "ru": "⏰ Напоминание: нет недельного отчёта за неделю {week}.",
         "uz": "⏰ Eslatma: {week} haftasi uchun haftalik hisobot yoʻq.",

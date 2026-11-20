@@ -4,15 +4,18 @@
 Экзамен, карточки и подсказки появятся на этапах 3–4.
 """
 
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
-from bot import forms, repo, reports, schedule
+from bot import card, forms, repo, reports, schedule
+from bot.config import data_dir
 from bot.access import TeacherOnly
 from bot.handlers.common import show
 from bot.texts import all_variants, t
@@ -79,6 +82,58 @@ async def form_data(message: Message, con, conf, teacher) -> None:
         # Ссылки в кнопках несут данные группы — после каждого сохранения обновляем клавиатуру
         markup = forms.group_keyboard(con, conf, g, teacher["lang"])
     await message.answer(result.text, reply_markup=markup)
+
+
+def cards_week(con, group_id: int, today) -> object:
+    """Неделя для карточек: текущая, а если по ней ещё нет отчётов — прошлая."""
+    current = reports.week_start(today)
+    for week in (current, current - timedelta(weeks=1)):
+        if con.execute("SELECT 1 FROM weekly_reports WHERE group_id = ? AND week_start = ? LIMIT 1",
+                       (group_id, week.isoformat())).fetchone():
+            return week
+    return current
+
+
+@router.message(F.text.in_(all_variants("btn_cards")))
+async def send_cards(message: Message, con, teacher) -> None:
+    lang = teacher["lang"]
+    g = repo.group(con, teacher["current_group_id"]) if teacher["current_group_id"] else None
+    if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
+        return await message.answer(t("choose_group_first", lang))
+    today = schedule.today()
+    week = cards_week(con, g["id"], today)
+    done = reports.reports_for_weeks(con, g["id"], [week])
+    students = repo.group_students(con, g["id"])
+    ready = [s for s in students if s["consent"] and s["id"] in done]
+    skipped = [(s, "cards_no_consent" if not s["consent"] else "cards_no_report")
+               for s in students if s not in ready]
+    if not ready:
+        return await message.answer(t("cards_none", lang, week=card.week_text(week, lang)) if not done
+                                    else _skipped_text(skipped, lang))
+    await message.answer(t("cards_wait", lang, n=len(ready)))
+    folder = data_dir() / "cards"
+    sent = 0
+    for s in ready:
+        data = card.collect(con, s["id"], g["id"], week, today)
+        png = await asyncio.to_thread(card.render, data)
+        card.save(png, folder, week, s["id"], g["id"])
+        caption = t("cards_caption", s["card_lang"], name=s["full_name"], week=card.week_text(week, s["card_lang"]))
+        try:
+            await message.answer_photo(BufferedInputFile(png, filename=f"{s['id']}.png"), caption=caption)
+            sent += 1
+        except TelegramAPIError as e:
+            log.warning("Карточка %s не отправлена: %s", s["id"], type(e).__name__)
+        await asyncio.sleep(0.4)  # не упираться в ограничения Telegram на частоту
+    text = t("cards_done", lang, n=sent)
+    if skipped:
+        text += "\n\n" + _skipped_text(skipped, lang)
+    await message.answer(text)
+
+
+def _skipped_text(skipped, lang: str) -> str:
+    lines = [t("cards_skipped", lang)]
+    lines += [f"• {s['full_name']} — {t(reason, lang)}" for s, reason in skipped]
+    return "\n".join(lines)
 
 
 @router.message()
