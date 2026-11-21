@@ -183,7 +183,7 @@ def test_payloads_fit_and_contain_minimum(con):
     send(con, teacher, {"t": "att", "g": g["id"], "d": "2026-11-18", "m": [[s, i % 4] for i, s in enumerate(order)]})
     payload = forms.weekly_payload(con, g, "ru", TODAY)
     url = forms.form_url("https://premiumaplic.github.io/Premiumbasis/", "weekly", payload)
-    assert len(url) < 1800, len(url)
+    assert len(url) < 2000, len(url)
     assert payload["st"][0][1] == "Азиз К."                 # только имя и первая буква фамилии
     assert len(payload["st"]) == 20
     assert "Каримов" not in json.dumps(payload, ensure_ascii=False)
@@ -197,8 +197,8 @@ def test_big_group_is_split_into_parts(con):
     teacher, g, sids = setup(con, 20)
     urls = forms.split_urls("https://example.github.io/R/", "weekly",
                             lambda chunk: forms.weekly_payload(con, g, "ru", TODAY, chunk),
-                            repo.group_students(con, g["id"]), 1350)
-    assert len(urls) >= 2 and all(len(u) <= 1350 for u in urls)
+                            repo.group_students(con, g["id"]), 1600)
+    assert len(urls) >= 2 and all(len(u) <= 1600 for u in urls)
     parts = [decode_param(u.split("#d=")[1]) for u in urls]
     assert sum(len(p["st"]) for p in parts) == 20 and parts[0]["part"] == [1, len(urls)]
 
@@ -273,3 +273,22 @@ def test_cards_subset(con):
     assert send(con, teacher, {"t": "cards", "g": g["id"]}).ids is None
     assert "Форма не сохранена" in send(con, teacher, {"t": "cards", "g": g["id"], "ids": [other]}).text
     assert "Форма не сохранена" in send(con, teacher, {"t": "cards", "g": g["id"], "ids": "1"}).text
+
+
+def test_weekly_goal(con):
+    teacher, g, sids = setup(con, 2)
+    q = qids(con, g)
+    goals = reports.goals_for(con, "en")
+    math_goal = next(x["id"] for x in reports.goals_for(con, "math") if x["subjects"] == "math")
+    ok = send(con, teacher, {"t": "wk", "g": g["id"], "w": "2026-11-16", "q": q,
+                             "r": [[sids[0], code("321023"), "", 0, goals[0]["id"]], [sids[1], code("111111"), "", 1, 0]]})
+    assert "Сохранено" in ok.text
+    saved = reports.reports_for_weeks(con, g["id"], [MONDAY])
+    assert saved[sids[0]]["2026-11-16"]["goal"] == goals[0]["id"] and saved[sids[1]]["2026-11-16"]["goal"] == 0
+    payload = forms.weekly_payload(con, g, "ru", TODAY)
+    assert payload["go"] == {"0": [[sids[0], goals[0]["id"]]]} and payload["gl"][0][1] == goals[0]["text_ru"]
+    # чужая цель (другого предмета), не число, несуществующая — отказ
+    for bad in (math_goal, "1", 9999, True):
+        res = send(con, teacher, {"t": "wk", "g": g["id"], "w": "2026-11-16", "q": q,
+                                  "r": [[sids[0], code("321023"), "", 0, bad]]})
+        assert "повреждены" in res.text, bad

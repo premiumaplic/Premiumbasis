@@ -45,7 +45,8 @@
       deltaUp: "+{n}%", deltaDown: "−{n}%", hello: "Привет! Это журнал группы",
       demoNote: "Демо: все имена выдуманы, сохранение не работает",
       hintsAll: "Все подсказки", mapEmpty: "У предмета этой группы нет карты станций",
-      stw1: "станция", stw2: "станции", stw5: "станций", before: "пройденный раздел — нажмите, чтобы раскрыть"
+      stw1: "станция", stw2: "станции", stw5: "станций",
+      exportTitle: "Скачать отчёты группы (Excel)", exportSub: "эта и прошлая неделя: оценки, звёзды, цели, комментарии", before: "пройденный раздел — нажмите, чтобы раскрыть"
     },
     uz: {
       tabHome: "Asosiy", tabStudents: "Oʻquvchilar", tabMap: "Xarita", tabStats: "Natijalar",
@@ -77,7 +78,8 @@
       deltaUp: "+{n}%", deltaDown: "−{n}%", hello: "Salom! Bu guruh jurnali",
       demoNote: "Demo: barcha ismlar oʻylab topilgan, saqlash ishlamaydi",
       hintsAll: "Barcha maslahatlar", mapEmpty: "Bu guruh fani uchun bosqichlar xaritasi yoʻq",
-      stw1: "bosqich", stw2: "bosqich", stw5: "bosqich", before: "oʻtilgan boʻlim — ochish uchun bosing"
+      stw1: "bosqich", stw2: "bosqich", stw5: "bosqich",
+      exportTitle: "Guruh hisobotlarini yuklab olish (Excel)", exportSub: "shu va oʻtgan hafta: baholar, yulduzlar, maqsadlar, izohlar", before: "oʻtilgan boʻlim — ochish uchun bosing"
     }
   });
 
@@ -112,7 +114,10 @@
       a: { "11": { "0": "322123xx3", "1": "21101xxx2" }, "12": { "0": "333232333", "1": "333222322" },
            "14": { "0": "22212x2x2", "1": "2221xxxx2" }, "16": { "0": "333333333" },
            "13": { "1": "21101xxx2" }, "15": { "1": "2222xxxx2" } },
-      c: {}, sr: { "0": [12] }
+      c: {}, sr: { "0": [12] },
+      gl: [[1, "Делать домашнее задание вовремя"], [2, "Быть активнее на уроке"], [4, "Учить по 10 новых слов в день"],
+           [5, "Читать по 15 минут в день"], [7, "Повторить грамматику темы"], [8, "Больше говорить на уроке"]],
+      go: { "0": [[12, 5]] }
     },
     ex: { s: 6, sn: "Курс A1", nx: "Курс A2", fork: false, mode: "score", pass: 60, max: 100, prev: {} },
     tp: { cur: "Unit 5. Present Simple", u: [[1, 5, "Present Simple"], [2, 6, "My day"], [3, 7, "Food"]] },
@@ -140,6 +145,14 @@
   var hub, demo = false, tab = "home", nav = null, mapOpen = {};
 
   // ---------------------------------------------------------------- данные
+
+  // Элемент «иконка + текст»
+  function it(tag, cls, iconName, text) {
+    var e = el(tag, cls);
+    if (iconName) e.appendChild(SB.icon(iconName));
+    if (text !== undefined && text !== null) e.appendChild(document.createTextNode(text));
+    return e;
+  }
 
   function student(id) { return hub.st.filter(function (s) { return s[0] === id; })[0]; }
   function station(id) { return (hub.stg || []).filter(function (s) { return s[0] === id; })[0]; }
@@ -191,13 +204,13 @@
   function renderTabbar() {
     var bar = document.getElementById("tabbar");
     bar.innerHTML = "";
-    var items = [["home", "🏠", t("tabHome")], ["students", "👥", t("tabStudents")]];
-    if (hub.stg && hub.stg.length) items.push(["map", "🗺️", t("tabMap")]);
-    items.push(["stats", "📊", t("tabStats")]);
+    var items = [["home", "home", t("tabHome")], ["students", "users", t("tabStudents")]];
+    if (hub.stg && hub.stg.length) items.push(["map", "map", t("tabMap")]);
+    items.push(["stats", "chart", t("tabStats")]);
     items.forEach(function (it) {
       var b = el("button", "tab" + (tab === it[0] ? " active" : ""));
       b.type = "button";
-      b.appendChild(el("span", "tab-icon", it[1]));
+      b.appendChild(SB.icon(it[1]));
       b.appendChild(el("span", "tab-label", it[2]));
       if (it[0] === "students") {
         var att = hub.st.filter(function (s) { return badHints(s[0]).length; }).length;
@@ -316,16 +329,16 @@
     }
     var dx = daysTo(hub.exd);
     if (dx !== null && dx >= 0) {
-      chips.appendChild(el("span", "hchip exam" + (dx <= 7 ? " soon" : ""),
-                           "🎓 " + (dx === 0 ? t("examToday") : dx === 1 ? t("examTomorrow") : t("examIn", { n: dx }))));
+      chips.appendChild(it("span", "hchip exam" + (dx <= 7 ? " soon" : ""), "cap",
+                           dx === 0 ? t("examToday") : dx === 1 ? t("examTomorrow") : t("examIn", { n: dx })));
     }
     var sk = streak();
-    if (sk >= 2) chips.appendChild(el("span", "hchip fire", "🔥 " + t("streak", { n: sk })));
+    if (sk >= 2) chips.appendChild(it("span", "hchip", "check", t("streak", { n: sk })));
     left.appendChild(chips);
     if (hub.wkt) {
       var segs = el("div", "week-segs");
       for (var i = 1; i <= hub.wkt; i++) segs.appendChild(el("i", i < hub.wkn ? "on" : i === hub.wkn ? "now" : ""));
-      segs.appendChild(el("b", "flag", "🏁"));
+      segs.appendChild(SB.icon("flag"));
       left.appendChild(segs);
     }
     hero.appendChild(left);
@@ -347,25 +360,25 @@
     // ---- быстрые действия
     box.appendChild(el("h2", "", t("actions")));
     var grid = el("div", "quick");
-    grid.appendChild(quick("📝", t("weekly"), done + "/" + total, "orange", function () { openForm("weekly"); }));
+    grid.appendChild(quick("report", t("weekly"), done + "/" + total, "orange", function () { openForm("weekly"); }));
     if (hub.ex) {
-      grid.appendChild(quick("🎓", hub.ex.mode === "score" ? t("exam") : t("decision"),
+      grid.appendChild(quick("cap", hub.ex.mode === "score" ? t("exam") : t("decision"),
                              hub.ex.nx ? "➜ " + hub.ex.nx : hub.ex.sn, "blue", function () { openForm("exam"); }));
     }
-    grid.appendChild(quick("📚", t("topic"), hub.tp && hub.tp.cur ? hub.tp.cur : t("noTopic"), "green",
+    grid.appendChild(quick("book", t("topic"), hub.tp && hub.tp.cur ? hub.tp.cur : t("noTopic"), "green",
                            function () { openForm("topic"); }));
     var ready = cardsReady().length;
-    grid.appendChild(quick("💌", t("cards"), ready + "/" + total, "pink", function () { sub(cardsScreen); }));
-    grid.appendChild(quick("💡", t("hints"), hintsBad.length ? t("hintsN", { n: hintsBad.length }) : t("noHints"),
+    grid.appendChild(quick("mail", t("cards"), ready + "/" + total, "pink", function () { sub(cardsScreen); }));
+    grid.appendChild(quick("bulb", t("hints"), hintsBad.length ? t("hintsN", { n: hintsBad.length }) : t("noHints"),
                            "yellow", function () { sub(hintsScreen); }, hintsBad.length));
     if (hub.stg && hub.stg.length) {
-      grid.appendChild(quick("🗺️", t("tabMap"), hub.gs ? stName(hub.gs) : "—", "blue", function () { go("map"); }));
+      grid.appendChild(quick("map", t("tabMap"), hub.gs ? stName(hub.gs) : "—", "blue", function () { go("map"); }));
     } else {
-      grid.appendChild(quick("📊", t("tabStats"), t("groupLevel"), "blue", function () { go("stats"); }));
+      grid.appendChild(quick("chart", t("tabStats"), t("groupLevel"), "blue", function () { go("stats"); }));
     }
     if (hub.att) {
       var attToday = hub.att.h && hub.att.h["0"];
-      grid.appendChild(quick("✅", t("attendance"), attToday ? "✓ " + t("attToday") : t("attMark"), "teal",
+      grid.appendChild(quick("checkbox", t("attendance"), attToday ? t("attToday") : t("attMark"), "teal",
                              function () { openForm("attendance"); }));
     }
     box.appendChild(grid);
@@ -408,32 +421,30 @@
     } else {
       mood = "party"; title = t("stepDone"); subText = t("stepDoneSub");
     }
-    var top = el("div", "mission-top");
-    top.appendChild(SB.mascot(mood, 76));
+    if (mood === "party" || mood === "happy") card.classList.add("done");
+    var ic = el("span", "mission-ic");
+    ic.appendChild(SB.icon(mood === "party" ? "check" : btn === t("stepSend") ? "mail" :
+                           hub.ex && dx === 0 && hub.ex.mode === "score" ? "cap" : total ? "report" : "users", "ic-lg"));
+    card.appendChild(ic);
     var text = el("div", "grow");
     text.appendChild(el("small", "", t("nextStep")));
     text.appendChild(el("b", "", title));
-    text.appendChild(el("span", "", subText));
-    top.appendChild(text);
-    card.appendChild(top);
+    text.appendChild(el("span", "sub", subText));
+    card.appendChild(text);
     if (btn) {
       var b = el("button", "btn", btn);
       b.type = "button";
       b.addEventListener("click", action);
       card.appendChild(b);
     }
-    // праздник: все отчёты недели заполнены (один раз за неделю)
-    if (total && done === total) {
-      var key = "party:" + hub.gid + ":" + (hub.wk && hub.wk.wk);
-      if (!SB.draftGet(key)) { SB.draftSet(key, 1); setTimeout(SB.confetti, 350); }
-    }
     return card;
   }
-
   function quick(icon, title, subText, color, onClick, badge) {
     var b = el("button", "qtile " + color);
     b.type = "button";
-    b.appendChild(el("span", "qicon", icon));
+    var qi = el("span", "qicon");
+    qi.appendChild(SB.icon(icon));
+    b.appendChild(qi);
     b.appendChild(el("b", "", title));
     b.appendChild(el("span", "sub", subText));
     if (badge) b.appendChild(el("span", "count", String(badge)));
@@ -450,7 +461,7 @@
     text.appendChild(el("b", "", (s ? s[1] : "") + " · " + h[2]));
     if (h[3]) text.appendChild(el("span", "sub", t("why") + ": " + h[3]));
     row.appendChild(text);
-    row.appendChild(el("span", "hint-icon", h[4] === "growth" ? "🌟" : "⚠️"));
+    row.appendChild(it("span", "hint-icon", h[4] === "growth" ? "trendUp" : "alert"));
     if (link && s) row.addEventListener("click", function () { tab = "students"; renderTabbar(); sub(function () { profile(s[0]); }); });
     return row;
   }
@@ -462,7 +473,7 @@
     var box = screen("students");
     var head = el("div", "tabhead");
     head.appendChild(el("h1", "", t("tabStudents")));
-    head.appendChild(el("span", "group-chip", "👥 " + hub.g + " · " + hub.st.length));
+    head.appendChild(el("span", "group-chip", hub.g + " · " + hub.st.length));
     box.appendChild(head);
 
     var seg = el("div", "filters");
@@ -496,7 +507,7 @@
     av.style.fontSize = Math.round((size || 50) * 0.36) + "px";
     r.appendChild(av);
     wrap.appendChild(r);
-    if (starred(s[0])) wrap.appendChild(el("span", "star-badge", "⭐"));
+    if (starred(s[0])) wrap.appendChild(it("span", "star-badge", "starFill"));
     return wrap;
   }
 
@@ -508,10 +519,10 @@
     mid.appendChild(el("b", "", s[1]));
     var meta = el("span", "meta");
     if (hub.stg && hub.stg.length && s[3]) meta.appendChild(el("span", "mini-chip", stName(s[3])));
-    meta.appendChild(el("span", "mini-chip " + (reportDone(s[0]) ? "ok" : "todo"),
-                        reportDone(s[0]) ? "✓ " + t("reportDone") : t("noReport")));
+    meta.appendChild(it("span", "mini-chip " + (reportDone(s[0]) ? "ok" : "todo"), reportDone(s[0]) ? "check" : null,
+                        reportDone(s[0]) ? t("reportDone") : t("noReport")));
     var bad = badHints(s[0]).length;
-    if (bad) meta.appendChild(el("span", "mini-chip warn", "⚠️ " + bad));
+    if (bad) meta.appendChild(it("span", "mini-chip warn", "alert", String(bad)));
     mid.appendChild(meta);
     b.appendChild(mid);
     var right = el("span", "sright");
@@ -537,8 +548,9 @@
     info.appendChild(big);
     var chips = el("div", "meta");
     chips.appendChild(el("span", "mini-chip", t("card") + ": " + (s[2] || "ru").toUpperCase()));
-    chips.appendChild(el("span", "mini-chip " + (s[4] ? "ok" : "warn"), s[4] ? "✓ " + t("consentYes") : t("consentNo")));
-    if (starred(sid)) chips.appendChild(el("span", "mini-chip star", "⭐ " + t("star")));
+    chips.appendChild(it("span", "mini-chip " + (s[4] ? "ok" : "warn"), s[4] ? "check" : "alert",
+                         s[4] ? t("consentYes") : t("consentNo")));
+    if (starred(sid)) chips.appendChild(it("span", "mini-chip star", "starFill", t("star")));
     info.appendChild(chips);
     head.appendChild(info);
     box.appendChild(head);
@@ -580,13 +592,13 @@
       st.appendChild(el("small", "hint", t("station")));
       st.appendChild(el("b", "", cur ? cur[1] : "—"));
       if (cur && cur[3]) st.appendChild(el("span", "hint", cur[3]));
-      var mv = el("button", "btn ghost", "🔀 " + t("moveStudent"));
+      var mv = it("button", "btn ghost", "route", t("moveStudent"));
       mv.type = "button";
       mv.addEventListener("click", function () { sub(function () { pickStation(sid); }); });
       st.appendChild(mv);
       box.appendChild(st);
     }
-    var fill = el("button", "btn", "📝 " + t("fillReport"));
+    var fill = it("button", "btn", "report", t("fillReport"));
     fill.type = "button";
     fill.addEventListener("click", function () { openForm("weekly", { sid: sid }); });
     box.appendChild(fill);
@@ -659,7 +671,7 @@
     var box = screen("map");
     var head = el("div", "tabhead");
     head.appendChild(el("h1", "", t("tabMap")));
-    head.appendChild(el("span", "group-chip", "👥 " + hub.g));
+    head.appendChild(el("span", "group-chip", hub.g));
     box.appendChild(head);
     if (!hub.stg || !hub.stg.length) { box.appendChild(el("div", "empty-state", t("mapEmpty"))); return; }
     box.appendChild(el("p", "hint", t("mapHint")));
@@ -678,7 +690,7 @@
     var currentNode = null;
     hub.stg.forEach(function (s, i) {
       if ((s[4] === "c" || s[4] === "i") && !forkShown) {
-        path.appendChild(el("div", "fork-banner", "🔀 " + t("fork")));
+        path.appendChild(el("div", "fork-banner", t("fork")));
         forkShown = true;
       }
       if (s[2] !== lastSection) {
@@ -723,13 +735,18 @@
       k++;
       var btn = el("button", "pbtn");
       btn.type = "button";
-      btn.appendChild(el("span", "picon", state === "done" ? "✓" : state === "current" ? "★" : String(i + 1)));
+      var pic = el("span", "picon");
+      if (state === "done") pic.appendChild(SB.icon("check"));
+      else if (state === "current") pic.appendChild(SB.icon("starFill"));
+      else pic.textContent = String(i + 1);
+      btn.appendChild(pic);
       if (state === "current") btn.appendChild(el("span", "pulse"));
       btn.addEventListener("click", function () { SB.haptic("select"); sub(function () { stationSheet(s[0]); }); });
       node.appendChild(btn);
       var label = el("div", "plabel");
       label.appendChild(el("b", "", s[1]));
-      if (state === "current") label.appendChild(el("span", "flag-chip", "🚩 " + t("groupHere")));
+      if (s[3]) label.appendChild(el("small", "", s[3]));
+      if (state === "current") label.appendChild(it("span", "flag-chip", "flag", t("groupHere")));
       node.appendChild(label);
       var people = byStation[s[0]] || [];
       if (people.length) {
@@ -762,7 +779,7 @@
     if (!here.length) box.appendChild(el("div", "empty-state", t("noStudentsHere")));
     here.forEach(function (x) { box.appendChild(studentRow(x)); });
     if (id !== hub.gs) {
-      var mv = el("button", "btn ghost", "👥 " + t("moveGroupHere"));
+      var mv = it("button", "btn ghost", "users", t("moveGroupHere"));
       mv.type = "button";
       mv.addEventListener("click", function () {
         SB.confirm(t("moveConfirm", { who: t("wholeGroup") + " " + hub.g, from: stName(hub.gs), to: s[1] }) + "\n\n" +
@@ -802,7 +819,7 @@
     var box = screen("stats-tab");
     var head = el("div", "tabhead");
     head.appendChild(el("h1", "", t("tabStats")));
-    head.appendChild(el("span", "group-chip", "👥 " + hub.g));
+    head.appendChild(el("span", "group-chip", hub.g));
     box.appendChild(head);
     var len = hub.st.length ? hist(hub.st[0]).length : 0;
     if (!len) { box.appendChild(el("div", "empty-state", t("noData"))); return; }
@@ -822,7 +839,9 @@
                           " " + t("vsLastWeek")));
     }
     lvl.appendChild(left);
-    lvl.appendChild(SB.mascot(now === null ? "calm" : now >= 70 ? "happy" : now >= 45 ? "calm" : "worried", 64));
+    var bi = el("span", "big-ic");
+    bi.appendChild(SB.icon(now !== null && prev !== null && now < prev ? "trendDown" : "trendUp"));
+    lvl.appendChild(bi);
     box.appendChild(lvl);
 
     var weeks = [];
@@ -877,10 +896,31 @@
     var down = trend.filter(function (x) { return x.lv !== null && (x.lv <= 3 || (x.d !== null && x.d <= -0.5)); })
       .sort(function (a, b) { return a.lv - b.lv; }).slice(0, 3);
     var two = el("div", "two");
-    two.appendChild(peopleCard("🚀 " + t("growing"), up, "good"));
-    two.appendChild(peopleCard("🤝 " + t("needHelp"), down, "bad"));
+    two.appendChild(peopleCard(t("growing"), up, "good"));
+    two.appendChild(peopleCard(t("needHelp"), down, "bad"));
     box.appendChild(two);
+    box.appendChild(exportRow());
     stagger(box);
+  }
+
+  // Excel с отчётами группы за эту и прошлую неделю — бот пришлёт файл в чат
+  function exportRow() {
+    var b = el("button", "action-row violet");
+    b.type = "button";
+    b.style.marginTop = "12px";
+    var qi = el("span", "qicon");
+    qi.appendChild(SB.icon("download"));
+    b.appendChild(qi);
+    var tx = el("span", "grow");
+    tx.appendChild(el("b", "", t("exportTitle")));
+    tx.appendChild(el("span", "sub", t("exportSub")));
+    b.appendChild(tx);
+    b.appendChild(SB.icon("chevron"));
+    b.addEventListener("click", function () {
+      SB.haptic("success");
+      SB.send({ v: 1, u: SB.uuid(), t: "export", g: hub.gid });
+    });
+    return b;
   }
 
   function peopleCard(title, items, cls) {
@@ -907,7 +947,6 @@
       var box = screen("hints");
       backRow(box, t("hints"));
       if (!hub.hn || !hub.hn.length) {
-        box.appendChild(SB.mascot("happy", 96));
         box.appendChild(el("div", "empty-state", t("hintsEmpty")));
         SB.setSave(t("save"), function () {}, false);
         return;
@@ -919,10 +958,12 @@
         b.type = "button";
         b.appendChild(SB.avatar(s ? s[1] : "?", h[1]));
         var text = el("span", "grow");
-        text.appendChild(el("span", "", (h[4] === "growth" ? "🌟 " : "⚠️ ") + (s ? s[1] : "") + " — " + h[2]));
+        text.appendChild(el("span", "", (s ? s[1] : "") + " — " + h[2]));
         if (h[3]) text.appendChild(el("span", "sub", t("why") + ": " + h[3]));
         b.appendChild(text);
-        b.appendChild(el("span", "mark", marked[h[0]] ? "✓" : ""));
+        var mk = el("span", "mark");
+        if (marked[h[0]]) mk.appendChild(SB.icon("check"));
+        b.appendChild(mk);
         b.addEventListener("click", function () { marked[h[0]] = !marked[h[0]]; SB.haptic("select"); draw(); });
         box.appendChild(b);
       });
@@ -946,7 +987,9 @@
       var box = screen("cards");
       backRow(box, t("cards"));
       var intro = el("div", "card soft cards-intro");
-      intro.appendChild(el("span", "big-emoji", "💌"));
+      var ib = el("span", "big-ic");
+      ib.appendChild(SB.icon("mail"));
+      intro.appendChild(ib);
       intro.appendChild(el("span", "grow", t("cardsText")));
       box.appendChild(intro);
       if (ready.length > 1) {
@@ -964,11 +1007,13 @@
         if (ok) b.type = "button";
         b.appendChild(SB.avatar(s[1], s[0]));
         var tx = el("span", "grow");
-        tx.appendChild(el("span", "", s[1] + (starred(s[0]) ? " ⭐" : "")));
+        tx.appendChild(el("span", "", s[1] + (starred(s[0]) ? " ★" : "")));
         tx.appendChild(el("span", "sub", ok ? t("cardsReady") : !s[4] ? t("cardsNoConsent") : t("cardsNoReport")));
         b.appendChild(tx);
         if (ok) {
-          b.appendChild(el("span", "mark", chosen[s[0]] ? "✓" : ""));
+          var mk2 = el("span", "mark");
+          if (chosen[s[0]]) mk2.appendChild(SB.icon("check"));
+          b.appendChild(mk2);
           b.addEventListener("click", function () { chosen[s[0]] = !chosen[s[0]]; SB.haptic("select"); draw(); });
         }
         box.appendChild(b);

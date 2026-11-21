@@ -19,6 +19,16 @@ def questions_for(con, subject_code: str) -> list:
     return [q for q in rows if q["subjects"] == "*" or subject_code in q["subjects"].split(",")]
 
 
+def goals_for(con, subject_code: str, only_active: bool = True) -> list:
+    """Цели на неделю для предмета (общие '*' и свои)."""
+    rows = con.execute("SELECT * FROM goals" + (" WHERE active = 1" if only_active else "") + " ORDER BY sort, id").fetchall()
+    return [g for g in rows if g["subjects"] == "*" or subject_code in g["subjects"].split(",")]
+
+
+def goal(con, goal_id: int):
+    return con.execute("SELECT * FROM goals WHERE id = ?", (goal_id,)).fetchone() if goal_id else None
+
+
 def phrases(con) -> list:
     return con.execute("SELECT * FROM phrases WHERE active = 1 ORDER BY sort").fetchall()
 
@@ -49,19 +59,19 @@ def save_attendance(con, tg_id: int, group_id: int, lesson_date: date, marks: li
 # ---------------------------------------------------------------- недельные отчёты
 
 def reports_for_weeks(con, group_id: int, weeks: list[date]) -> dict[int, dict[str, dict]]:
-    """{student_id: {week_iso: {"answers": {question_id: value}, "comment": str, "star": bool}}}"""
+    """{student_id: {week_iso: {"answers": {question_id: value}, "comment": str, "star": bool, "goal": int}}}"""
     if not weeks:
         return {}
     marks = "?" + ",?" * (len(weeks) - 1)
     rows = con.execute(
-        f"SELECT r.id, r.student_id, r.week_start, r.comment, r.star, a.question_id, a.value "
+        f"SELECT r.id, r.student_id, r.week_start, r.comment, r.star, r.goal_id, a.question_id, a.value "
         f"FROM weekly_reports r LEFT JOIN weekly_answers a ON a.report_id = r.id "
         f"WHERE r.group_id = ? AND r.week_start IN ({marks})",
         [group_id, *[w.isoformat() for w in weeks]]).fetchall()
     out: dict[int, dict[str, dict]] = {}
     for r in rows:
         item = out.setdefault(r["student_id"], {}).setdefault(
-            r["week_start"], {"answers": {}, "comment": r["comment"], "star": bool(r["star"])})
+            r["week_start"], {"answers": {}, "comment": r["comment"], "star": bool(r["star"]), "goal": r["goal_id"]})
         if r["question_id"] is not None:
             item["answers"][r["question_id"]] = r["value"]
     return out
@@ -82,24 +92,25 @@ def last_answers_before(con, group_id: int, week: date) -> dict[int, dict[int, i
 
 
 def save_weekly(con, tg_id: int, group_id: int, week: date, student_id: int,
-                answers: dict[int, int], comment: str, star: bool = False) -> None:
+                answers: dict[int, int], comment: str, star: bool = False, goal_id: int = 0) -> None:
     """Сохраняет отчёт ученика за неделю. Пустой комментарий не стирает прежний.
 
     answers — только оценённые вопросы (необязательный вопрос можно пропустить).
-    star — «звезда недели» (значок на карточке родителю).
+    star — «звезда недели» (значок на карточке родителю); goal_id — цель на следующую неделю (0 — нет).
     """
     row = con.execute("SELECT id, comment FROM weekly_reports WHERE student_id = ? AND group_id = ? "
                       "AND week_start = ?", (student_id, group_id, week.isoformat())).fetchone()
     if row:
         report_id = row["id"]
-        con.execute("UPDATE weekly_reports SET comment = ?, star = ?, created_by = ?, created_at = datetime('now') "
-                    "WHERE id = ?", (comment or row["comment"], int(star), tg_id, report_id))
+        con.execute("UPDATE weekly_reports SET comment = ?, star = ?, goal_id = ?, created_by = ?, "
+                    "created_at = datetime('now') WHERE id = ?",
+                    (comment or row["comment"], int(star), goal_id, tg_id, report_id))
         con.execute("DELETE FROM weekly_answers WHERE report_id = ?", (report_id,))
     else:
         report_id = con.execute(
-            "INSERT INTO weekly_reports (student_id, group_id, week_start, comment, star, created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?)", (student_id, group_id, week.isoformat(), comment, int(star),
-                                          tg_id)).lastrowid
+            "INSERT INTO weekly_reports (student_id, group_id, week_start, comment, star, goal_id, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)", (student_id, group_id, week.isoformat(), comment, int(star), goal_id,
+                                             tg_id)).lastrowid
     con.executemany("INSERT INTO weekly_answers (report_id, question_id, value) VALUES (?, ?, ?)",
                     [(report_id, qid, value) for qid, value in answers.items()])
 

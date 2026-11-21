@@ -305,7 +305,7 @@
       sendCards: "Прислать карточки · {n}", noExam: "у этого предмета нет экзаменов",
       lv0: "слабо", lv1: "так себе", lv2: "хорошо", lv3: "отлично", optional: "можно пропустить",
       notRated: "не оценивалось на этой неделе", pickLevel: "Выберите уровень",
-      starWeek: "Звезда недели", starHint: "На карточке родителю появится значок ⭐"
+      starWeek: "Звезда недели", starHint: "На карточке родителю появится значок ★"
     },
     uz: {
       save: "Saqlash", saveN: "Saqlash · {n}", next: "Keyingisi", toList: "Roʻyxatga",
@@ -352,7 +352,7 @@
       sendCards: "Kartalarni yuborish · {n}", noExam: "bu fanda imtihon yoʻq",
       lv0: "sust", lv1: "oʻrtacha", lv2: "yaxshi", lv3: "aʼlo", optional: "oʻtkazish mumkin",
       notRated: "bu hafta baholanmagan", pickLevel: "Darajani tanlang",
-      starWeek: "Hafta yulduzi", starHint: "Ota-ona kartasida ⭐ belgisi paydo boʻladi"
+      starWeek: "Hafta yulduzi", starHint: "Ota-ona kartasida ★ belgisi paydo boʻladi"
     }
   };
   var lang = "ru";
@@ -397,7 +397,7 @@
     saveHandler = handler;
     var tg = tgo();
     if (inTg() && tg.MainButton) {
-      tg.MainButton.setParams({ text: text, color: "#ff9a3c", text_color: "#ffffff", is_visible: !!visible });
+      tg.MainButton.setParams({ text: text, color: "#ef8a2b", text_color: "#ffffff", is_visible: !!visible });
       return;
     }
     if (!fallbackBar) {
@@ -474,7 +474,7 @@
     try { localStorage.removeItem("sb:" + key); } catch (e) { /* ничего */ }
   }
 
-  var AVATAR_COLORS = ["#ff9a3c", "#4dba6a", "#5ab4f0", "#b37cf0", "#ff7a6b", "#f2b630", "#3cc6b6", "#f07cb4"];
+  var AVATAR_COLORS = ["#e9883a", "#3f9e6a", "#3d86c6", "#8a62c9", "#d4604f", "#c99a2e", "#2f9e93", "#c35f8f"];
   function avatar(name, id) {
     var el = document.createElement("span");
     el.className = "avatar";
@@ -668,7 +668,59 @@
     return forms[2];
   }
 
+  // Линейные иконки 24×24 (свои, без внешних файлов). Только постоянные строки — без данных из ссылки.
+  var ICONS = {
+    home: '<path d="M3 11l9-8 9 8"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5c2.4.2 4 1.8 4.5 4.5"/>',
+    map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
+    chart: '<path d="M3 20h18"/><path d="M6 20v-7M11 20V6M16 20v-10"/>',
+    report: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h6M9 18h3"/>',
+    cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v5"/>',
+    book: '<path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h13"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',
+    checkbox: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-6"/>',
+    check: '<path d="M5 12l5 5 9-10"/>',
+    star: '<path d="M12 3l2.8 5.8 6.2.8-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.8z"/>',
+    starFill: '<path fill="currentColor" d="M12 3l2.8 5.8 6.2.8-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.8z"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    chevron: '<path d="M9 6l6 6-6 6"/>',
+    back: '<path d="M15 6l-6 6 6 6"/>',
+    bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    file: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+    database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    download: '<path d="M12 4v11M7 10l5 5 5-5M4 20h16"/>',
+    target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    sliders: '<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="15" cy="7" r="2" fill="var(--surface)"/><circle cx="9" cy="12" r="2" fill="var(--surface)"/><circle cx="17" cy="17" r="2" fill="var(--surface)"/>',
+    list: '<path d="M9 6h12M9 12h12M9 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="3"/>',
+    grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',
+    trendUp: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    trendDown: '<path d="M3 7l6 6 4-4 8 8"/><path d="M15 17h6v-6"/>',
+    alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/>',
+    repeat: '<path d="M4 11a8 8 0 0 1 14-4.5L20 9"/><path d="M20 4v5h-5"/><path d="M20 13a8 8 0 0 1-14 4.5L4 15"/><path d="M4 20v-5h5"/>',
+    empty: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+    thumb: '<path d="M7 11v9H4v-9z"/><path d="M7 11l4-8c1.5 0 2.5 1 2.5 2.5V9H19a2 2 0 0 1 2 2.3l-1.3 7A2 2 0 0 1 17.7 20H7"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
+    send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+    building: '<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/>',
+    route: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/>',
+    shuffle: '<path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>'
+  };
+  function icon(name, cls) {
+    var box = el("span", "ic" + (cls ? " " + cls : ""));
+    box.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || "") + "</svg>";
+    return box;
+  }
+
   var ui = {
+    icon: icon,
     addTexts: addTexts, ring: ring, sparkline: sparkline, countUp: countUp, confetti: confetti, mascot: mascot,
     plural: plural, reduced: reduced, svg: svg,
     tgo: tgo, inTg: inTg, t: t, setLang: setLang, lang: function () { return lang; },

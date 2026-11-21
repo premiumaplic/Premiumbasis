@@ -19,7 +19,7 @@ from bot.texts import t
 PANEL_LIMIT = 6000
 WEEKS = 8
 TOP = 12
-OWNER_ACTIONS = ("o_remind", "o_summary", "o_backup")
+OWNER_ACTIONS = ("o_remind", "o_summary", "o_backup", "o_export")
 BTN_PANEL = "📊 Панель центра"
 BTN_MENU = "☰ Меню владельца"
 NEED_HELP = ("exam_risk", "drop", "homework", "absent", "late")

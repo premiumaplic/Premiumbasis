@@ -28,6 +28,7 @@ class EditTexts(StatesGroup):
     question = State()
     phrases = State()
     station = State()
+    goals = State()
 
 
 # ================================================================ бэкап и сводка
@@ -131,6 +132,22 @@ async def remind_now(bot: Bot, con) -> int:
     return sent
 
 
+async def send_centre_export(message: Message, con) -> None:
+    from datetime import timedelta
+    from aiogram.types import BufferedInputFile
+    from bot import export
+    week = reports.week_start(schedule.today())
+    data = export.weekly_xlsx(con, repo.list_groups(con), [week, week - timedelta(weeks=1)])   # база — в этом же потоке
+    repo.audit(con, message.from_user.id, "export", "", week.isoformat())
+    await message.answer_document(BufferedInputFile(data, filename=export.filename("centr", week)),
+                                  caption="Отчёты всех групп за эту и прошлую неделю (Excel).")
+
+
+@router.message(Command("export"))
+async def export_cmd(message: Message, con) -> None:
+    await send_centre_export(message, con)
+
+
 @router.message(F.web_app_data, PanelAction())
 async def panel_action(message: Message, bot: Bot, con, conf, action: str, teacher=None) -> None:
     kind, uuid = action.split(":", 1)
@@ -145,6 +162,9 @@ async def panel_action(message: Message, bot: Bot, con, conf, action: str, teach
                 else "Напоминать некому: у всех учителей отчёты этой недели заполнены 👍")
     elif kind == "o_summary":
         text = summary.text(con, reports.week_start(schedule.today()))
+    elif kind == "o_export":
+        await send_centre_export(message, con)
+        text = "Готово: файл выше. В нём лист «Сводка» по группам и по листу на каждую неделю."
     else:
         await message.answer("Делаю бэкап…")
         text = await do_backup(bot, con, conf)
@@ -160,6 +180,7 @@ async def texts_menu(cb: CallbackQuery, state: FSMContext) -> None:
         [("📚 Юниты книги (темы)", A(act="topics"))],
         [("❓ Вопросы недели", A(act="questions"))],
         [("💬 Готовые фразы", A(act="phrases"))],
+        [("🎯 Цели на неделю", A(act="goals"))],
         [("🗺 Станции карты (описания)", A(act="stations_txt"))],
         [("⬅️ Меню", A(act="menu"))]))
 
@@ -407,3 +428,64 @@ async def station_text_save(message: Message, state: FSMContext, con) -> None:
     repo.audit(con, message.from_user.id, "station_about", f"stage:{stage_id}")
     await message.answer("Сохранено.", reply_markup=kb([("🗺 Станции карты", A(act="stations_txt"))],
                                                       [("⬅️ Меню", A(act="menu"))]))
+
+
+# ---- цели на неделю (выбираются в недельном отчёте, видны родителю на карточке)
+
+GOAL_SCOPES = {"все": "*", "языки": "en,ar,ru,ko", "математика": "math", "английский": "en", "арабский": "ar",
+               "русский": "ru", "корейский": "ko"}
+SCOPE_NAMES = {v: k.capitalize() for k, v in GOAL_SCOPES.items()}
+
+
+def goal_line(g) -> str:
+    scope = SCOPE_NAMES.get(g["subjects"], g["subjects"])
+    return f"{scope}: {g['text_ru']} | {g['text_uz']}"
+
+
+def parse_goals(text: str) -> tuple[list[tuple[str, str, str]] | None, str]:
+    items = []
+    for raw in text.splitlines():
+        line = " ".join(raw.split())
+        if not line:
+            continue
+        scope = "*"
+        head, sep, rest = line.partition(":")
+        if sep and head.strip().casefold() in GOAL_SCOPES and "|" in rest:
+            scope, line = GOAL_SCOPES[head.strip().casefold()], rest.strip()
+        if line.count("|") != 1:
+            return None, f"В строке «{line[:40]}» нужен ровно один знак «|»."
+        ru, uz = (x.strip() for x in line.split("|"))
+        if not ru or not uz or len(ru) > 50 or len(uz) > 50:
+            return None, f"Строка «{line[:40]}»: обе части от 1 до 50 знаков."
+        items.append((scope, ru, uz))
+    if not items or len(items) > 40:
+        return None, "Нужно от 1 до 40 целей."
+    return items, ""
+
+
+@router.callback_query(A.filter(F.act == "goals"))
+async def goals_menu(cb: CallbackQuery, state: FSMContext, con) -> None:
+    rows = con.execute("SELECT * FROM goals WHERE active = 1 ORDER BY sort, id").fetchall()
+    listing = "\n".join(goal_line(g) for g in rows) or "пусто"
+    await state.set_state(EditTexts.goals)
+    await show(cb, "Цели на следующую неделю — учитель выбирает одну для ученика в недельном отчёте, "
+                   "родитель видит её на карточке.\n\nСейчас:\n" + listing + "\n\n"
+                   "Чтобы заменить, пришлите новый список: каждая цель с новой строки, русский и узбекский "
+                   "через «|», до 50 знаков. В начале строки можно указать, для кого: «Все:», «Языки:», "
+                   "«Математика:», «Английский:» и т. п. Без указания — для всех предметов.",
+               kb(nav(A(act="texts"))))
+
+
+@router.message(EditTexts.goals)
+async def goals_save(message: Message, state: FSMContext, con) -> None:
+    items, error = parse_goals(message.text or "")
+    if error:
+        return await message.answer(error, reply_markup=kb(nav(A(act="texts"))))
+    await state.clear()
+    with tx(con):
+        con.execute("UPDATE goals SET active = 0")   # старые не удаляются: на них ссылаются прошлые отчёты
+        con.executemany("INSERT INTO goals (subjects, sort, text_ru, text_uz) VALUES (?, ?, ?, ?)",
+                        [(scope, 10 * (i + 1), ru, uz) for i, (scope, ru, uz) in enumerate(items)])
+        repo.audit(con, message.from_user.id, "goals", "", f"count={len(items)}")
+    await message.answer(f"Сохранено: целей {len(items)}. Учителя увидят их после «🔄 Обновить».",
+                         reply_markup=kb([("⬅️ Меню", A(act="menu"))]))

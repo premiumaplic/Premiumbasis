@@ -57,7 +57,7 @@ def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
     def code(answers: dict) -> str:
         return "".join(str(answers[q["id"]]) if q["id"] in answers else "x" for q in questions)
 
-    answers, comments, stars = {}, {}, {}
+    answers, comments, stars, goals = {}, {}, {}, {}
     for s in students:
         per_week = {}
         for back, week in enumerate(weeks):
@@ -68,6 +68,8 @@ def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
                     comments.setdefault(str(back), []).append(s["id"])
                 if item.get("star"):
                     stars.setdefault(str(back), []).append(s["id"])
+                if item.get("goal"):
+                    goals.setdefault(str(back), []).append([s["id"], item["goal"]])
         if s["id"] in before:
             per_week["p"] = code(before[s["id"]])  # последний отчёт до самой ранней недели
         if per_week:
@@ -81,6 +83,9 @@ def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
               for q in questions],
         "ph": [[p["text_ru"], p["text_uz"]] for p in reports.phrases(con)],
         "a": answers, "c": comments, "sr": stars,
+        # цели на неделю: список на языке учителя и выбранные цели по неделям [[ученик, цель]]
+        "gl": [[x["id"], x[f"text_{suffix}"]] for x in reports.goals_for(con, g["subject"])],
+        "go": goals,
     }
 
 
@@ -270,27 +275,30 @@ def _save_weekly(con, teacher, g, data, tg_id: int, today: date, lang: str) -> l
     if not isinstance(qids, list) or qids != allowed:
         raise FormError("err_questions")
     optional = [bool(q["optional"]) for q in reports.questions_for(con, g["subject"])]
+    goal_ids = {x["id"] for x in reports.goals_for(con, g["subject"], only_active=False)}
     rows = data.get("r")
     if not isinstance(rows, list) or not rows or len(rows) > 200:
         raise FormError("err_bad_data")
     parsed = {}
     for item in rows:
-        # [ученик, ответы, комментарий] или [ученик, ответы, комментарий, звезда 0/1]
-        if (not isinstance(item, list) or len(item) not in (3, 4) or not _ints(item[0]) or item[0] in parsed
+        # [ученик, ответы, комментарий] (+ звезда 0/1) (+ цель на неделю: номер, 0 — нет)
+        if (not isinstance(item, list) or len(item) not in (3, 4, 5) or not _ints(item[0]) or item[0] in parsed
                 or not isinstance(item[1], str) or len(item[1]) != len(qids)
                 or any(ch not in ("0123-" if opt else "0123") for ch, opt in zip(item[1], optional))
                 or all(ch == "-" for ch in item[1])
                 or not isinstance(item[2], str) or len(item[2]) > COMMENT_MAX
-                or (len(item) == 4 and (not _ints(item[3]) or item[3] not in (0, 1)))):
+                or (len(item) >= 4 and (not _ints(item[3]) or item[3] not in (0, 1)))
+                or (len(item) == 5 and (not _ints(item[4]) or (item[4] != 0 and item[4] not in goal_ids)))):
             raise FormError("err_bad_data")
         answers = {qid: int(ch) for qid, ch in zip(qids, item[1]) if ch != "-"}
-        parsed[item[0]] = (answers, " ".join(item[2].split()), len(item) == 4 and item[3] == 1)
+        parsed[item[0]] = (answers, " ".join(item[2].split()), len(item) >= 4 and item[3] == 1,
+                           item[4] if len(item) == 5 else 0)
     good, foreign = _split_students(con, g["id"], list(parsed))
     if not good:
         raise FormError("err_no_students")
     for sid in good:
-        answers, comment, star = parsed[sid]
-        reports.save_weekly(con, tg_id, g["id"], week, sid, answers, comment, star)
+        answers, comment, star, goal_id = parsed[sid]
+        reports.save_weekly(con, tg_id, g["id"], week, sid, answers, comment, star, goal_id)
     week_text = f"{week.strftime('%d.%m')}–{(week + timedelta(days=5)).strftime('%d.%m')}"
     lines = [t("saved_wk", lang, group=g["name"], week=week_text, n=len(good))]
     left = reports.students_without_report(con, g["id"], week)
@@ -450,9 +458,15 @@ def _save_cards(con, teacher, g, data, tg_id: int, today: date, lang: str, out: 
     return []
 
 
+def _save_export(con, teacher, g, data, tg_id: int, today: date, lang: str, out: Result) -> list[str]:
+    """Excel с отчётами группы присылает обработчик чата (Result.action = "export")."""
+    out.action = "export"
+    return []
+
+
 SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic, "ex": _save_exam,
-          "hints": _save_hints, "move": _save_move, "cards": _save_cards}
-NEEDS_RESULT = {"move", "cards"}   # этим обработчикам нужен сам ответ (уведомление владельцу, список)
+          "hints": _save_hints, "move": _save_move, "cards": _save_cards, "export": _save_export}
+NEEDS_RESULT = {"move", "cards", "export"}   # этим обработчикам нужен сам ответ (уведомление владельцу, список)
 
 
 def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime) -> Result:

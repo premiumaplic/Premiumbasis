@@ -44,7 +44,7 @@
            ["Нигора Х.", "IELTS-1", "Резкий спад: говорение", "было 2,5, стало 1"],
            ["Ислом М.", "Kids-2", "Домашка проседает", "недели: 09.11–14.11, 16.11–21.11"]],
     good: [["Севара О.", "11-Б", "Похвалите", "средний балл растёт 3 недели подряд"],
-           ["Мадина Ю.", "10-А", "⭐ Звезда недели", ""]]
+           ["Мадина Ю.", "10-А", "★ Звезда недели", ""]]
   };
 
   SB.addTexts({
@@ -54,6 +54,7 @@
       oStudents: "учеников", oConsent: "с согласием", oGroupsK: "групп", oTeachersK: "учителей",
       oActions: "Команды боту", oRemind: "Напомнить учителям", oRemindSub: "у кого есть незаполненные отчёты",
       oRemindAsk: "Отправить напоминание учителям, у которых не заполнены отчёты этой недели?",
+      oExport: "Выгрузить отчёты в Excel", oExportSub: "эта и прошлая неделя: все ученики, оценки, цели, комментарии",
       oSummary: "Сводка в чат", oSummarySub: "отчёты, оценки, экзамены", oBackup: "Бэкап сейчас", oBackupSub: "в закрытый канал",
       oByWeeks: "Отчёты по неделям, %", oGrades: "Оценки недели", oInflated: "Почти все ответы «отлично» — возможно, оценки завышены",
       oExams: "Экзамены скоро", oNoExams: "В ближайшие 3 недели экзаменов нет", oInDays: "через {n} дн.", oToday: "сегодня",
@@ -62,11 +63,18 @@
       fAll: "Все", fBehind: "Отстают", fExams: "Экзамены", fHints: "Подсказки",
       oAllGroups: "Все группы", oOnStation: "учеников на станциях", oNoMap: "Нет предметов с картой станций",
       oDataAt: "Данные на момент нажатия кнопки. Чтобы обновить — «🔄 Обновить» в чате.",
-      oDemo: "Демо: все имена и цифры выдуманы", oStars: "⭐ {n}", oWeekOf: "нед. {n}/{t}", oWeekN: "нед. {n}",
+      oDemo: "Демо: все имена и цифры выдуманы", oStars: "★ {n}", oWeekOf: "нед. {n}/{t}", oWeekN: "нед. {n}",
       g0: "слабо", g1: "так себе", g2: "хорошо", g3: "отлично", oTeacherGroups: "Группы учителя {n}"
     },
     uz: {}
   });
+
+  function it(tag, cls, iconName, text) {
+    var e = el(tag, cls);
+    if (iconName) e.appendChild(SB.icon(iconName));
+    if (text !== undefined && text !== null) e.appendChild(document.createTextNode(text));
+    return e;
+  }
 
   function pctOf(a, b) { return b ? Math.round(100 * a / b) : 0; }
   function daysTo(iso) { return iso ? Math.round((SB.parseISO(iso) - SB.parseISO(D.today)) / 86400000) : null; }
@@ -89,18 +97,18 @@
   function head(box, title) {
     var h = el("div", "tabhead");
     h.appendChild(el("h1", "", title));
-    if (D.center) h.appendChild(el("span", "group-chip", "🏫 " + D.center));
+    if (D.center) h.appendChild(el("span", "group-chip", D.center));
     box.appendChild(h);
   }
 
   function tabbar() {
     var bar = document.getElementById("tabbar");
     bar.innerHTML = "";
-    [["home", "🏠", t("oOverview")], ["teachers", "👩‍🏫", t("oTeachers")], ["groups", "👥", t("oGroups")],
-     ["stations", "🗺️", t("oStations")]].forEach(function (it) {
+    [["home", "home", t("oOverview")], ["teachers", "user", t("oTeachers")], ["groups", "users", t("oGroups")],
+     ["stations", "map", t("oStations")]].forEach(function (it) {
       var b = el("button", "tab" + (tab === it[0] ? " active" : ""));
       b.type = "button";
-      b.appendChild(el("span", "tab-icon", it[1]));
+      b.appendChild(SB.icon(it[1]));
       b.appendChild(el("span", "tab-label", it[2]));
       b.addEventListener("click", function () { go(it[0]); });
       bar.appendChild(b);
@@ -159,10 +167,10 @@
     if (demo) box.appendChild(el("p", "hint center", t("oDemo")));
 
     var kpi = el("div", "kpis");
-    [[D.k[0], t("oStudents"), "🎓"], [D.k[1], t("oConsent"), "✍️"], [D.k[2], t("oGroupsK"), "👥"],
-     [D.k[3], t("oTeachersK"), "👩‍🏫"]].forEach(function (k) {
+    [[D.k[0], t("oStudents"), "cap"], [D.k[1], t("oConsent"), "pen"], [D.k[2], t("oGroupsK"), "users"],
+     [D.k[3], t("oTeachersK"), "user"]].forEach(function (k) {
       var c = el("div", "kpi");
-      c.appendChild(el("span", "kpi-icon", k[2]));
+      c.appendChild(it("span", "kpi-icon", k[2]));
       var b = el("b");
       SB.countUp(b, k[0]);
       c.appendChild(b);
@@ -172,10 +180,11 @@
     box.appendChild(kpi);
 
     box.appendChild(el("h2", "", t("oActions")));
-    var acts = el("div", "quick");
-    acts.appendChild(action("⏰", t("oRemind"), t("oRemindSub"), "orange", function () { send("o_remind", t("oRemindAsk")); }));
-    acts.appendChild(action("📊", t("oSummary"), t("oSummarySub"), "blue", function () { send("o_summary"); }));
-    acts.appendChild(action("💾", t("oBackup"), t("oBackupSub"), "green", function () { send("o_backup"); }));
+    var acts = el("div");
+    acts.appendChild(action("bell", t("oRemind"), t("oRemindSub"), "orange", function () { send("o_remind", t("oRemindAsk")); }));
+    acts.appendChild(action("download", t("oExport"), t("oExportSub"), "violet", function () { send("o_export"); }));
+    acts.appendChild(action("file", t("oSummary"), t("oSummarySub"), "blue", function () { send("o_summary"); }));
+    acts.appendChild(action("database", t("oBackup"), t("oBackupSub"), "green", function () { send("o_backup"); }));
     box.appendChild(acts);
 
     // отчёты по неделям
@@ -216,14 +225,14 @@
         legend.appendChild(l);
       });
       gc.appendChild(legend);
-      if (sum >= 20 && D.grades[3] / sum >= 0.8) gc.appendChild(el("div", "error-box", "⚠️ " + t("oInflated")));
+      if (sum >= 20 && D.grades[3] / sum >= 0.8) gc.appendChild(el("div", "error-box", t("oInflated")));
       box.appendChild(gc);
     }
 
     // экзамены скоро
     var soon = D.g.filter(function (g) { var d = daysTo(g[G.exd]); return d !== null && d >= 0 && d <= 21; })
       .sort(function (a, b) { return daysTo(a[G.exd]) - daysTo(b[G.exd]); });
-    box.appendChild(el("h2", "", "🎓 " + t("oExams")));
+    box.appendChild(el("h2", "", t("oExams")));
     if (!soon.length) box.appendChild(el("div", "empty-state", t("oNoExams")));
     soon.forEach(function (g) {
       var d = daysTo(g[G.exd]);
@@ -237,18 +246,23 @@
       box.appendChild(row);
     });
 
-    box.appendChild(people("🤝 " + t("oHelp"), D.risk, "bad"));
-    box.appendChild(people("🌟 " + t("oPraise"), D.good, "good"));
+    box.appendChild(people(t("oHelp"), D.risk, "bad"));
+    box.appendChild(people(t("oPraise"), D.good, "good"));
     box.appendChild(el("p", "hint center footer", t("oDataAt")));
     stagger(box);
   }
 
   function action(icon, title, subText, color, onClick) {
-    var b = el("button", "qtile " + color);
+    var b = el("button", "action-row " + color);
     b.type = "button";
-    b.appendChild(el("span", "qicon", icon));
-    b.appendChild(el("b", "", title));
-    b.appendChild(el("span", "sub", subText));
+    var qi = el("span", "qicon");
+    qi.appendChild(SB.icon(icon));
+    b.appendChild(qi);
+    var tx = el("span", "grow");
+    tx.appendChild(el("b", "", title));
+    tx.appendChild(el("span", "sub", subText));
+    b.appendChild(tx);
+    b.appendChild(SB.icon("chevron"));
     b.addEventListener("click", onClick);
     return b;
   }
@@ -290,7 +304,7 @@
       var meta = el("span", "meta");
       meta.appendChild(el("span", "mini-chip", groups.length + " " + t("oGroupsK")));
       meta.appendChild(el("span", "mini-chip " + (done === n ? "ok" : "todo"), t("oFilled", { d: done, n: n })));
-      if (hints) meta.appendChild(el("span", "mini-chip warn", "⚠️ " + hints));
+      if (hints) meta.appendChild(it("span", "mini-chip warn", "alert", String(hints)));
       mid.appendChild(meta);
       b.appendChild(mid);
       var avg = lv.length ? Math.round(lv.reduce(function (a, c) { return a + c; }, 0) / lv.length / 9 * 100) : null;
@@ -318,7 +332,7 @@
       seg.appendChild(b);
     });
     if (teacherFilter !== null) {
-      var all = el("button", "fchip", "✕ " + t("oAllGroups"));
+      var all = el("button", "fchip", "× " + t("oAllGroups"));
       all.type = "button";
       all.addEventListener("click", function () { teacherFilter = null; groupsTab(); });
       seg.appendChild(all);
@@ -358,11 +372,11 @@
     c.appendChild(bar);
     setTimeout(function () { fill.style.width = pctOf(g[G.done], g[G.n]) + "%"; }, 80);
     var meta = el("div", "meta");
-    meta.appendChild(el("span", "mini-chip " + (g[G.done] === g[G.n] ? "ok" : "todo"), "📝 " + t("oFilled", { d: g[G.done], n: g[G.n] })));
+    meta.appendChild(it("span", "mini-chip " + (g[G.done] === g[G.n] ? "ok" : "todo"), "report", t("oFilled", { d: g[G.done], n: g[G.n] })));
     if (g[G.wkn]) meta.appendChild(el("span", "mini-chip", g[G.wkt] ? t("oWeekOf", { n: g[G.wkn], t: g[G.wkt] }) : t("oWeekN", { n: g[G.wkn] })));
     var d = daysTo(g[G.exd]);
-    if (d !== null && d >= 0) meta.appendChild(el("span", "mini-chip " + (d <= 7 ? "warn" : ""), "🎓 " + (d === 0 ? t("oToday") : t("oInDays", { n: d }))));
-    if (g[G.hints]) meta.appendChild(el("span", "mini-chip warn", "⚠️ " + g[G.hints]));
+    if (d !== null && d >= 0) meta.appendChild(it("span", "mini-chip " + (d <= 7 ? "warn" : ""), "cap", d === 0 ? t("oToday") : t("oInDays", { n: d })));
+    if (g[G.hints]) meta.appendChild(it("span", "mini-chip warn", "alert", String(g[G.hints])));
     if (g[G.stars]) meta.appendChild(el("span", "mini-chip star", t("oStars", { n: g[G.stars] })));
     c.appendChild(meta);
     return c;

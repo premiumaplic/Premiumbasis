@@ -492,3 +492,31 @@ def test_owner_question_toggles_and_station_texts(chat, con):
     assert "две части" in last_text(run(chat.send(OWNER, "без разделителя")))
     run(chat.send(OWNER, "Таблица умножения | Karra jadvali"))
     assert repo.stage(con, st)["about_ru"] == "Таблица умножения"
+
+
+def test_excel_export_for_teacher_and_owner(chat, con):
+    import io
+    from openpyxl import load_workbook
+    from bot import reports, schedule
+    tid = make_teacher(con, TEACHER_TG)
+    gid = make_group(con, "10-А", teacher_id=tid)
+    other = make_group(con, "11-Б", teacher_id=make_teacher(con, 600002, "Другой Учитель"))
+    today = schedule.today()
+    a = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, today)
+    repo.add_student(con, OWNER, "Чужой Ученик", "ru", True, other, today)
+    goal = reports.goals_for(con, "en")[0]["id"]
+    reports.save_weekly(con, TEACHER_TG, gid, reports.week_start(today), a, {1: 3, 2: 1}, "Молодец", True, goal)
+    calls = _form(chat, TEACHER_TG, {"t": "export", "g": gid})
+    doc = next(c for c in calls if type(c).__name__ == "SendDocument")
+    wb = load_workbook(io.BytesIO(doc.document.data))
+    assert wb.sheetnames[0] == "Сводка" and len(wb.sheetnames) == 3
+    rows = list(wb.worksheets[1].iter_rows(values_only=True))
+    assert rows[1][:2] == ("10-А", "Азиз Каримов") and "3 · сделано хорошо" in rows[1]
+    assert "Делать домашнее задание вовремя" in rows[1] and "Чужой Ученик" not in str(rows)
+    # чужая группа — отказ
+    assert "не назначена" in last_text(_form(chat, TEACHER_TG, {"t": "export", "g": other}))
+    # владелец: весь центр
+    calls = _form(chat, OWNER, {"t": "o_export"})
+    doc = next(c for c in calls if type(c).__name__ == "SendDocument")
+    summary = list(load_workbook(io.BytesIO(doc.document.data)).worksheets[0].iter_rows(values_only=True))
+    assert {r[1] for r in summary[1:]} == {"10-А", "11-Б"}

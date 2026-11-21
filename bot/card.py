@@ -59,7 +59,7 @@ TX = {
         "weak": "Над чем работать — {x}.", "even_top": "Отличные результаты по всем показателям.",
         "even": "Ровные результаты по всем показателям.",
         "praise": "Молодец! Результаты растут {n} недели подряд.", "comment": "Комментарий учителя",
-        "star": "⭐ Звезда недели",
+        "star": "⭐ Звезда недели", "goal": "Цель на следующую неделю", "trend": "динамика",
     },
     "uz": {
         "group": "Guruh", "week": "{d} haftasi", "path": "Yoʻl", "here": "hozir shu yerda",
@@ -77,7 +77,7 @@ TX = {
         "weak": "Ustida ishlash kerak — {x}.", "even_top": "Barcha koʻrsatkichlar aʼlo.",
         "even": "Barcha koʻrsatkichlar bir xil.",
         "praise": "Barakalla! Natijalar {n} hafta ketma-ket oʻsmoqda.", "comment": "Oʻqituvchi izohi",
-        "star": "⭐ Hafta yulduzi",
+        "star": "⭐ Hafta yulduzi", "goal": "Keyingi hafta maqsadi", "trend": "oʻsish",
     },
 }
 
@@ -109,6 +109,8 @@ class CardData:
     status: str | None          # on_plan / risk / None
     about: str = ""             # что проходят на текущей станции
     exam_days: int | None = None
+    goal: str = ""              # цель на следующую неделю (на языке карточки)
+    trend: list = field(default_factory=list)   # уровень за последние недели, 0–100 или None
     star: bool = False
     show_attendance: bool = False
     att_attended: int = 0
@@ -219,10 +221,20 @@ def collect(con, student_id: int, group_id: int, week: date, on: date | None = N
             arrow = 1 if diff >= 0.5 else -1 if diff <= -0.5 else 0
         data.metrics.append(Metric(q[f"text_{suffix}"], value, q[f"opt{value}_{suffix}"], arrow))
 
+    goal_row = reports.goal(con, report.get("goal") or 0)
+    if goal_row:
+        data.goal = goal_row[f"text_{suffix}"]
+    weeks = [week - timedelta(weeks=i) for i in range(TREND_WEEKS - 1, -1, -1)]
+    levels = reports.week_levels(con, group_id, weeks).get(student_id, {})
+    data.trend = [round(levels[w.isoformat()] / 3 * 100) if w.isoformat() in levels else None for w in weeks]
+
     data.summary = summary(data)
     if rules.growth_streak(con, student_id, group_id, week):
         data.praise = tx["praise"].format(n=repo.get_int(con, "hint_growth_weeks", 3))
     return data
+
+
+TREND_WEEKS = 6
 
 
 def summary(data: CardData) -> str:
@@ -455,28 +467,57 @@ def _week_track(draw, data: CardData, y: int, inner_left: int, inner_right: int)
     return 64
 
 
+def _sentences(text: str) -> list[str]:
+    out, cur = [], ""
+    for word in text.split():
+        cur = f"{cur} {word}".strip()
+        if cur.endswith("."):
+            out.append(cur)
+            cur = ""
+    return out + ([cur] if cur else [])
+
+
+def _trend(draw, data: CardData, right: int, top: int) -> None:
+    """Мини-график уровня за последние недели в правом углу панели показателей."""
+    pts = [(i, v) for i, v in enumerate(data.trend) if v is not None]
+    if len(pts) < 2:
+        return
+    w, h = 190, 30
+    left = right - w
+    n = max(1, len(data.trend) - 1)
+    xy = [(left + i * w / n, top + h - v / 100 * h) for i, v in pts]
+    label = TX[data.lang]["trend"]
+    draw.text((left - 12, top + h / 2), label, font=font(800, 18), fill=C["muted"], anchor="rm")
+    draw.line(xy, fill=C["accent"], width=5, joint="curve")
+    for k, (x, yy) in enumerate(xy):
+        r = 6 if k == len(xy) - 1 else 4
+        draw.ellipse((x - r, yy - r, x + r, yy + r), fill=C["accent_dark"] if k == len(xy) - 1 else C["accent"])
+
+
 def render(data: CardData) -> bytes:
     """Рисует карточку. Если не помещается (длинное имя, много показателей) — компактный вариант."""
-    png, height = _render(data, compact=False)
-    if height > H - 16:
-        png, height = _render(data, compact=True)
+    for level in range(3):           # 0 — обычный, 1 — компактный, 2 — плотный
+        png, height = _render(data, level)
+        if height <= H - 16:
+            break
     render.last_height = height  # для автотестов: всё поместилось
     return png
 
 
-def _render(data: CardData, compact: bool) -> tuple[bytes, int]:
+def _render(data: CardData, level: int) -> tuple[bytes, int]:
+    compact, tight = level >= 1, level >= 2
     img = Image.new("RGB", (W, H), C["bg"])
     draw = ImageDraw.Draw(img)
     tx = TX[data.lang]
     inner = W - 2 * M
-    gap = 10 if compact else 16
+    gap = 7 if tight else 10 if compact else 16
 
     # ---- 1. шапка: имя крупно (защита от ошибки пересылки)
     y = 36
     draw.text((M, y), _fit(draw, data.center or "", font(800, 27), inner // 2), font=font(800, 27), fill=C["accent_dark"])
     draw.text((W - M, y), tx["week"].format(d=data.week_text), font=font(800, 27), fill=C["muted"], anchor="ra")
     y += 42
-    size = 66
+    size = 58 if tight else 66
     while size > 48 and draw.textlength(data.name, font=font(900, size)) > inner:
         size -= 2
     for line in _wrap(draw, data.name, font(900, size), inner, 2):
@@ -502,9 +543,9 @@ def _render(data: CardData, compact: bool) -> tuple[bytes, int]:
         lines = []
         now = tx["now"].format(stage=data.stage_name) + (f" — {data.about}" if data.about else "")
         lines.append(now)
-        if data.topic:
+        if data.topic and not tight:
             lines.append(tx["topic"].format(t=data.topic))
-        if data.finish_line:
+        if data.finish_line and not (tight and data.view.weeks_total):
             lines.append(data.finish_line)
         if not data.view.weeks_total and data.next_exam_line:
             lines.append(data.next_exam_line)
@@ -544,7 +585,7 @@ def _render(data: CardData, compact: bool) -> tuple[bytes, int]:
 
     # ---- 3. посещаемость за месяц (если владелец её включил)
     if data.show_attendance:
-        h = 100
+        h = 88 if tight else 100
         _panel(draw, y, h)
         draw.text((M + 30, y + 16), tx["attendance"], font=font(800, 23), fill=C["muted"])
         if data.att_total:
@@ -571,10 +612,11 @@ def _render(data: CardData, compact: bool) -> tuple[bytes, int]:
     two = len(data.metrics) > 4
     cols = 2 if two else 1
     rows = -(-len(data.metrics) // cols) if data.metrics else 0
-    cell_h = (62 if compact else 74) if two else (48 if compact else 62)
+    cell_h = (52 if tight else 62 if compact else 74) if two else (48 if compact else 62)
     h = 52 + rows * cell_h + 6
     _panel(draw, y, h)
     draw.text((M + 30, y + 14), tx["metrics"], font=font(800, 23), fill=C["muted"])
+    _trend(draw, data, W - M - 30, y + 12)
     col_w = (inner - 60 - (30 if two else 0)) / cols
     for i, m in enumerate(data.metrics):
         col, row = (i // rows, i % rows) if two else (0, i)
@@ -609,7 +651,17 @@ def _render(data: CardData, compact: bool) -> tuple[bytes, int]:
     y += h + gap + 2
 
     # ---- 5–7. вывод, похвала, комментарий учителя
-    for line in _wrap(draw, data.summary, font(800, 27), inner, 2 if compact else 3):
+    if tight:
+        # плотный вариант: одна строка из целых предложений (без посещаемости — она есть выше)
+        parts = [p for p in _sentences(data.summary) if not p.startswith(("Посещаемость", "Davomat"))]
+        line = ""
+        for p in parts:
+            if draw.textlength((line + " " + p).strip(), font=font(800, 27)) <= inner:
+                line = (line + " " + p).strip()
+        lines = [line] if line else []
+    else:
+        lines = _wrap(draw, data.summary, font(800, 27), inner, 2)
+    for line in lines:
         draw.text((M + 4, y), line, font=font(800, 27), fill=C["text"])
         y += 36
     if data.praise:
@@ -618,11 +670,21 @@ def _render(data: CardData, compact: bool) -> tuple[bytes, int]:
         draw.rounded_rectangle((M, y, M + pw, y + 46), radius=23, fill=C["ok_soft"])
         draw.text((M + 20, y + 23), data.praise, font=font(900, 25), fill=C["ok_dark"], anchor="lm")
         y += 54
+    if data.goal:
+        y += 8
+        gh = 76
+        draw.rounded_rectangle((M, y, W - M, y + gh), radius=22, fill="#e6f0fa")
+        cx, cy = M + 44, y + gh // 2
+        for r, col in ((24, "#3d8fd6"), (16, "#e6f0fa"), (9, "#3d8fd6"), (3, "#e6f0fa")):
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=col)
+        draw.text((M + 84, y + 12), tx["goal"], font=font(800, 20), fill="#2a6fae")
+        draw.text((M + 84, y + 36), _fit(draw, data.goal, font(900, 27), inner - 110), font=font(900, 27), fill=C["text"])
+        y += gh + 4
     if data.comment:
         y += 6
         draw.text((M + 4, y), tx["comment"], font=font(800, 21), fill=C["muted"])
         y += 29
-        for line in _wrap(draw, f"«{data.comment}»", font(600, 27), inner, 2):
+        for line in _wrap(draw, f"«{data.comment}»", font(600, 27), inner, 1 if tight else 2):
             draw.text((M + 4, y), line, font=font(600, 27), fill=C["text"])
             y += 35
 

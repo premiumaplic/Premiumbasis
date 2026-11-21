@@ -70,7 +70,7 @@ def payload(con, g, lang: str, today: date) -> dict:
         **timing(g, today),
         "st": st,
         "att": {k: att[k] for k in ("today", "days", "h")} if att else None,
-        "wk": {k: wk[k] for k in ("wk", "q", "ph", "a", "c", "sr")},
+        "wk": {k: wk[k] for k in ("wk", "q", "ph", "a", "c", "sr", "gl", "go")},
         "ex": {k: ex[k] for k in ("s", "sn", "nx", "fork", "mode", "pass", "max", "prev")} if ex else None,
         "tp": {k: tp[k] for k in ("cur", "u")},
         "hn": [[h["id"], h["student_id"], *hints.parts(con, h, lang), h["rule"].split(":")[0]]

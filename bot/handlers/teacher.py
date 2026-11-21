@@ -106,9 +106,21 @@ async def form_data(message: Message, bot: Bot, con, conf, teacher, is_owner: bo
             await bot.send_message(conf.owner_id, result.notify_owner)
         except TelegramAPIError:
             pass
+    if result.action == "export" and result.group_id:
+        await send_export(message, con, teacher, repo.group(con, result.group_id))
     if result.action == "cards" and result.group_id:
         await send_cards_for(message, con, teacher, repo.group(con, result.group_id), result.ids)
         await message.answer("✅", reply_markup=keyboard(con, conf, teacher, is_owner))
+
+
+async def send_export(message: Message, con, teacher, g) -> None:
+    """Excel с отчётами группы за эту и прошлую неделю — в личный чат учителя."""
+    from bot import export
+    week = reports.week_start(schedule.today())
+    data = export.weekly_xlsx(con, [g], [week, week - timedelta(weeks=1)])   # база — в этом же потоке
+    log.info("Выгрузка Excel: группа %s, учитель %s", g["id"], message.from_user.id)
+    await message.answer_document(BufferedInputFile(data, filename=export.filename(g["name"], week)),
+                                  caption=t("export_caption", teacher["lang"], group=g["name"]))
 
 
 def cards_week(con, group_id: int, today) -> object:

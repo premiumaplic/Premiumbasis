@@ -130,3 +130,16 @@ def test_old_cards_are_removed(tmp_path):
     card.save(b"png", tmp_path, old, 1, 1)
     card.save(b"png", tmp_path, WEEKS[-1], 1, 1)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["2026-11-16"]
+
+
+def test_worst_case_card_fits(con):
+    # всё сразу: длинное имя, посещаемость, 9 показателей, звезда, похвала, цель, комментарий 80 знаков
+    sid, gid = setup(con, name="Абдурахмонова Шахзода Ильхомжоновна", comment="ж" * 80)
+    q = [x["id"] for x in reports.questions_for(con, "en")]
+    goal = reports.goals_for(con, "en")[3]["id"]
+    reports.save_weekly(con, 1, gid, WEEKS[-1], sid, dict(zip(q, [3, 2, 3, 1, 3, 2, 3, 2, 2])), "ж" * 80, True, goal)
+    data = card.collect(con, sid, gid, WEEKS[-1], ON)
+    assert data.goal == "Учить по 10 новых слов в день" and data.star and data.praise
+    assert len(data.trend) == 6 and data.trend[-1] is not None
+    card.render(data)
+    assert card.render.last_height <= card.H - 16

@@ -178,6 +178,8 @@ TEXTS = {
         "uz": "⏰ Eslatma: {week} haftasi uchun haftalik hisobot yoʻq.",
     },
     "reminder_group": {"ru": "{group}: {names} ({k} из {total})", "uz": "{group}: {names} ({total} tadan {k})"},
+    "export_caption": {"ru": "Отчёты группы {group} за эту и прошлую неделю (Excel).",
+                       "uz": "{group} guruhining shu va oʻtgan hafta hisobotlari (Excel)."},
     "not_your_group": {
         "ru": "Эта группа вам не назначена.",
         "uz": "Bu guruh sizga biriktirilmagan.",
