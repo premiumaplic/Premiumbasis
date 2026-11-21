@@ -602,10 +602,11 @@
       var col = el("span", "col" + (i === n - 1 ? " now" : "") + (v === null ? " none" : ""));
       var fill = el("i");
       fill.style.height = "0%";
+      col.appendChild(el("small", "colval", v === null ? "" : String(Math.round(v))));
       col.appendChild(fill);
       col.appendChild(el("small", "", i === n - 1 ? t("thisWeekShort") : "−" + (n - 1 - i)));
       wrap.appendChild(col);
-      var h = v === null ? 6 : Math.max(8, v);
+      var h = v === null ? 6 : Math.max(6, v * 0.82);   // место сверху для подписи
       if (SB.reduced) fill.style.height = h + "%";
       else setTimeout(function () { fill.style.height = h + "%"; }, 60 + i * 40);
     });
