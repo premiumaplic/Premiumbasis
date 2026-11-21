@@ -75,6 +75,15 @@ async def run(conf: cfg.Config) -> None:
                 await bot.send_message(conf.owner_id, "⚠️ " + problem)
             except TelegramAPIError:
                 pass
+    from bot import sitecheck
+    site_problem = await sitecheck.check(conf.forms_url)
+    if site_problem:
+        log.warning("Сайт с формами: %s", site_problem)
+        if conf.owner_id:
+            try:
+                await bot.send_message(conf.owner_id, "⚠️ " + site_problem)
+            except TelegramAPIError:
+                pass
     jobs = asyncio.create_task(scheduler.loop(bot, con, conf))  # noqa: F841 — живёт, пока работает бот
     # Старые обновления не сбрасываются: формы, отправленные пока бот был выключен, обработаются
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

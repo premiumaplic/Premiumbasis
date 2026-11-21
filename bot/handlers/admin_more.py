@@ -65,6 +65,9 @@ async def status(message: Message, bot: Bot, con, conf) -> None:
     else:
         lines.append("Канал бэкапов: не выбран — добавьте бота администратором в закрытый канал")
     lines.append("Пароль бэкапа: " + ("задан ✅" if conf.backup_password else "⚠️ не задан (config.ini, [backup] password)"))
+    from bot import sitecheck
+    site = await sitecheck.check(conf.forms_url)
+    lines.append("Сайт с формами: " + ("работает, версия совпадает ✅" if site is None else "⚠️ " + site))
     ok = repo.get_setting(con, "backup_ok")
     lines.append(f"Последний удачный бэкап: {ok.replace('T', ' ') if ok else 'ещё не было'}")
     await message.answer("\n".join(lines))

@@ -57,3 +57,10 @@ def test_save_value_keeps_comments(tmp_path):
     assert cfg.load(path).forms_url == "https://example.org/"
     cfg.save_value("telegram", "owner_id", "77", path)          # ключа не было — добавится в свой раздел
     assert cfg.load(path).owner_id == 77
+
+
+def test_site_version_matches_bot_version():
+    from pathlib import Path
+    from bot import __version__
+    site = (Path(__file__).resolve().parents[1] / "docs" / "version.txt").read_text().strip()
+    assert site == __version__, "обновите docs/version.txt вместе с bot/__init__.py"

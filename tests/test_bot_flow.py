@@ -277,12 +277,22 @@ def test_forward_from_group_is_explained(chat):
     assert "нужен закрытый КАНАЛ" in chat.session.calls[start:][-1].text
 
 
-def test_owner_status_command(chat):
+def test_owner_status_command(chat, monkeypatch):
+    from bot import sitecheck
+
+    async def fake_check(url):
+        return None
+    monkeypatch.setattr(sitecheck, "check", fake_check)
     text = last_text(run(chat.send(OWNER, "/status")))
     assert "Версия бота" in text and "Канал бэкапов: не выбран" in text and "Пароль бэкапа: ⚠️ не задан" in text
 
 
-def test_owner_log_command(chat):
+def test_owner_log_command(chat, monkeypatch):
+    from bot import sitecheck
+
+    async def fake_check(url):
+        return None
+    monkeypatch.setattr(sitecheck, "check", fake_check)
     from bot import config as cfg
     logs = cfg.data_dir() / "logs"
     logs.mkdir(parents=True, exist_ok=True)
