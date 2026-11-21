@@ -29,8 +29,16 @@ def test_seed_matches_spec(con):
     rows = con.execute("SELECT subjects, text_ru FROM questions ORDER BY sort").fetchall()
     lang = [r["text_ru"] for r in rows if r["subjects"] == "*" or "en" in r["subjects"].split(",")]
     math = [r["text_ru"] for r in rows if r["subjects"] == "*" or "math" in r["subjects"].split(",")]
-    assert lang == ["Домашнее задание", "Работа на уроке", "Новые слова", "Грамматика темы", "Говорение", "Дисциплина"]
-    assert math == ["Домашнее задание", "Работа на уроке", "Понимание темы", "Дисциплина"]
+    assert lang == ["Домашнее задание", "Работа на уроке", "Новые слова", "Грамматика темы", "Говорение",
+                    "Аудирование", "Чтение", "Письмо", "Дисциплина"]
+    assert math == ["Домашнее задание", "Работа на уроке", "Понимание темы", "Устный счёт", "Решение задач",
+                    "Оформление тетради", "Дисциплина"]
+    # карта математики: 11 классов в трёх разделах, переход по решению учителя
+    stages = repo.list_stages(con, "math")
+    assert [s["name_ru"] for s in stages][:2] == ["1 класс", "2 класс"] and len(stages) == 11
+    assert {s["section_ru"] for s in stages} == {"1–4 класс", "5–8 класс", "9–11 класс"}
+    assert not any(s["exam_transition"] for s in stages) and repo.subject(con, "math")["has_map"] == 1
+    assert repo.attendance_on(con) is False
     uz = con.execute("SELECT opt1_uz, uz_checked FROM questions WHERE sort = 20").fetchone()
     assert uz["opt1_uz"] == "soʻralganda javob beradi" and uz["uz_checked"] == 0  # черновик
 

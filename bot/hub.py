@@ -3,62 +3,120 @@
 Под полем ввода у учителя по кнопке на каждую группу: «📱 10-А · Английский».
 Кнопка открывает приложение группы; все данные группы — в ссылке кнопки (сжатый JSON).
 Сохранение — Telegram.WebApp.sendData (работает только у кнопок под полем ввода).
+
+В ссылке об учениках — только имя, первая буква фамилии и внутренние номера.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
-from bot import forms, hints, repo, schedule
+from bot import forms, hints, progress, repo, reports, rules, schedule
 from bot.payload import encode_param
 from bot.texts import t
 
 HUB_LIMIT = 6000   # символов ссылки; сервер Telegram принимает до 8000 (проверено на этапе 0)
+HISTORY_WEEKS = 8  # сколько недель истории уровня ученика в ссылке
+BRANCH_CODE = {"kids": "k", "main": "m", "cefr": "c", "ielts": "i"}
+
+
+def history(con, group_id: int, students, today: date) -> dict[int, str]:
+    """Уровень каждого ученика по неделям, от старой к текущей: строка из 8 знаков 0…9 или «-»."""
+    current = reports.week_start(today)
+    weeks = [current - timedelta(weeks=i) for i in range(HISTORY_WEEKS - 1, -1, -1)]
+    levels = reports.week_levels(con, group_id, weeks)
+    return {s["id"]: "".join(reports.level_char(levels.get(s["id"], {}).get(w.isoformat())) for w in weeks)
+            for s in students}
+
+
+def timing(g, today: date) -> dict:
+    """Неделя внутри станции, всего недель (8 — если переход по экзамену) и дата экзамена."""
+    start = schedule.anchor(g)
+    by_exam = bool(g["stage_id"] and g["exam_transition"])
+    if today < start:
+        return {"wkn": 0, "wkt": 0, "exd": "", "sst": start.isoformat()}
+    exam = rules.next_exam_for(g, today)
+    return {"wkn": schedule.stage_week(start, today, by_exam),
+            "wkt": schedule.WEEKS_PER_STAGE if by_exam else 0,
+            "exd": exam.isoformat() if exam else "", "sst": start.isoformat()}
+
+
+def stations(con, subject: str, lang: str) -> list:
+    """Станции карты по порядку: [номер, название, раздел, что проходят, ветка, экзамен 0/1, месяцев]."""
+    suffix = "uz" if lang == "uz" else "ru"
+    return [[s["id"], s[f"name_{suffix}"], s[f"section_{suffix}"], s[f"about_{suffix}"],
+             BRANCH_CODE[s["branch"]], s["exam_transition"], s["months"] or 0]
+            for s in progress.ordered(con, subject)]
 
 
 def payload(con, g, lang: str, today: date) -> dict:
     suffix = "uz" if lang == "uz" else "ru"
     students = repo.group_students(con, g["id"])
-    att = forms.attendance_payload(con, g, lang, today, students)
+    att = forms.attendance_payload(con, g, lang, today, students) if repo.attendance_on(con) else None
     wk = forms.weekly_payload(con, g, lang, today, students)
     ex = forms.exam_payload(con, g, lang, today)
     tp = forms.topic_payload(con, g, lang)
+    hist = history(con, g["id"], students, today)
     st = []
     for s in students:
         cur = repo.current_stage(con, s["id"], g["subject"]) if g["has_map"] else None
         st.append([s["id"], repo.short_name(s["full_name"]), s["card_lang"], cur["stage_id"] if cur else 0,
-                   1 if s["consent"] else 0])
+                   1 if s["consent"] else 0, hist[s["id"]]])
     header = schedule.group_header(g, lang, today).split(" · ", 1)
     data = {
-        "v": 1, "f": "hub", "gid": g["id"], "g": g["name"], "sj": g[f"subject_{suffix}"], "lang": lang,
+        "v": 2, "f": "hub", "gid": g["id"], "g": g["name"], "sj": g[f"subject_{suffix}"], "sc": g["subject"],
+        "lang": lang, "today": today.isoformat(),
         "hdr": header[1] if len(header) > 1 else "",
+        **timing(g, today),
         "st": st,
-        "att": {k: att[k] for k in ("today", "days", "h")},
-        "wk": {k: wk[k] for k in ("wk", "q", "ph", "a", "c")},
+        "att": {k: att[k] for k in ("today", "days", "h")} if att else None,
+        "wk": {k: wk[k] for k in ("wk", "q", "ph", "a", "c", "sr")},
         "ex": {k: ex[k] for k in ("s", "sn", "nx", "fork", "mode", "pass", "max", "prev")} if ex else None,
         "tp": {k: tp[k] for k in ("cur", "u")},
-        "hn": [[h["id"], h["student_id"], *hints.parts(con, h, lang)] for h in hints.open_hints(con, g["id"])],
-        "stg": [[s["id"], s[f"name_{suffix}"]] for s in repo.list_stages(con, g["subject"])] if g["has_map"] else [],
+        "hn": [[h["id"], h["student_id"], *hints.parts(con, h, lang), h["rule"].split(":")[0]]
+               for h in hints.open_hints(con, g["id"])],
+        "stg": stations(con, g["subject"], lang) if g["has_map"] else [],
         "gs": g["stage_id"] or 0,
     }
     return data
 
 
+# Что убирать из ссылки по очереди, если она не помещается (от наименее важного)
+def _trim_steps():
+    def no_about(d):
+        for s in d["stg"]:
+            s[3] = ""
+
+    def no_why(d):
+        d["hn"] = [[h[0], h[1], h[2], "", h[4]] for h in d["hn"]]
+
+    def no_units(d):
+        d["tp"]["u"] = []
+
+    def short_history(d):
+        for s in d["st"]:
+            s[5] = s[5][-4:]
+
+    def no_last_week(d):
+        for rec in d["wk"]["a"].values():
+            rec.pop("1", None)
+
+    return [no_about, no_why, no_units, short_history, no_last_week]
+
+
 def url(con, conf, g, lang: str, today: date) -> str | None:
-    """Ссылка приложения группы. Если не помещается — сначала без лишнего, иначе None."""
+    """Ссылка приложения группы. Если не помещается — без второстепенного, иначе None."""
     data = payload(con, g, lang, today)
     link = f"{conf.forms_url}app/#d={encode_param(data)}"
-    if len(link) <= HUB_LIMIT:
-        return link
-    data["hn"] = [[h[0], h[1], h[2], ""] for h in data["hn"]]   # без пояснений к подсказкам
-    data["tp"]["u"] = []                                         # без списка юнитов
-    link = f"{conf.forms_url}app/#d={encode_param(data)}"
+    for step in _trim_steps():
+        if len(link) <= HUB_LIMIT:
+            return link
+        step(data)
+        link = f"{conf.forms_url}app/#d={encode_param(data)}"
     return link if len(link) <= HUB_LIMIT else None
 
 
-def teacher_keyboard(con, conf, teacher, today: date | None = None) -> ReplyKeyboardMarkup | None:
-    """Кнопки под полем ввода: по одной на каждую группу учителя + «Обновить»."""
-    today = today or schedule.today()
+def group_buttons(con, conf, teacher, today: date) -> list[KeyboardButton]:
     lang = teacher["lang"]
     suffix = "uz" if lang == "uz" else "ru"
     buttons = []
@@ -70,9 +128,22 @@ def teacher_keyboard(con, conf, teacher, today: date | None = None) -> ReplyKeyb
         else:
             # слишком большая группа для одной ссылки — старый способ: формы отдельными кнопками
             buttons.append(KeyboardButton(text=f"📂 {g['name']}"))
-    if not buttons:
+    return buttons
+
+
+def teacher_keyboard(con, conf, teacher, today: date | None = None, extra: list | None = None
+                     ) -> ReplyKeyboardMarkup | None:
+    """Кнопки под полем ввода: по одной на каждую группу учителя + «Обновить».
+
+    extra — кнопки владельца (если владелец ещё и учитель): ставятся первой строкой.
+    """
+    today = today or schedule.today()
+    lang = teacher["lang"]
+    buttons = group_buttons(con, conf, teacher, today)
+    if not buttons and not extra:
         return None
-    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    rows = [extra] if extra else []
+    rows += [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     rows.append([KeyboardButton(text=t("btn_refresh", lang))])
     return ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True, keyboard=rows,
                                input_field_placeholder=t("hub_placeholder", lang))

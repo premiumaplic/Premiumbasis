@@ -57,7 +57,7 @@ def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
     def code(answers: dict) -> str:
         return "".join(str(answers[q["id"]]) if q["id"] in answers else "x" for q in questions)
 
-    answers, comments = {}, {}
+    answers, comments, stars = {}, {}, {}
     for s in students:
         per_week = {}
         for back, week in enumerate(weeks):
@@ -66,6 +66,8 @@ def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
                 per_week[str(back)] = code(item["answers"])
                 if item["comment"]:
                     comments.setdefault(str(back), []).append(s["id"])
+                if item.get("star"):
+                    stars.setdefault(str(back), []).append(s["id"])
         if s["id"] in before:
             per_week["p"] = code(before[s["id"]])  # последний отчёт до самой ранней недели
         if per_week:
@@ -74,9 +76,11 @@ def weekly_payload(con, g, lang: str, today: date, students=None) -> dict:
     return {
         "v": 1, "f": "wk", "gid": g["id"], "g": g["name"], "lang": lang, "wk": current.isoformat(),
         "st": [[s["id"], repo.short_name(s["full_name"]), s["card_lang"]] for s in students],
-        "q": [[q["id"], q[f"text_{suffix}"], *[q[f"opt{i}_{suffix}"] for i in range(4)]] for q in questions],
+        # 7-й элемент вопроса: 1 — вопрос можно пропустить («не оценивал»)
+        "q": [[q["id"], q[f"text_{suffix}"], *[q[f"opt{i}_{suffix}"] for i in range(4)], q["optional"]]
+              for q in questions],
         "ph": [[p["text_ru"], p["text_uz"]] for p in reports.phrases(con)],
-        "a": answers, "c": comments,
+        "a": answers, "c": comments, "sr": stars,
     }
 
 
@@ -143,13 +147,17 @@ def group_keyboard(con, conf, g, lang: str, today: date | None = None) -> ReplyK
     wk = split_urls(conf.forms_url, "weekly",
                     lambda chunk: weekly_payload(con, g, lang, today, chunk), students, limit)
     rows = []
-    for i, url in enumerate(att):
-        text = t("btn_attendance", lang) + (f" {i + 1}/{len(att)}" if len(att) > 1 else "")
-        rows.append([KeyboardButton(text=text, web_app=WebAppInfo(url=url))])
+    if repo.attendance_on(con):
+        for i, url in enumerate(att):
+            text = t("btn_attendance", lang) + (f" {i + 1}/{len(att)}" if len(att) > 1 else "")
+            rows.append([KeyboardButton(text=text, web_app=WebAppInfo(url=url))])
     wk_buttons = [KeyboardButton(text=t("btn_weekly", lang) if len(wk) == 1 else
                                  t("btn_weekly_part", lang, i=i + 1, n=len(wk)), web_app=WebAppInfo(url=url))
                   for i, url in enumerate(wk)]
-    rows[0] += wk_buttons[:1]
+    if rows:
+        rows[0] += wk_buttons[:1]
+    else:
+        rows.append(wk_buttons[:1])
     if len(wk_buttons) > 1:
         rows.append(wk_buttons[1:])
     third = []
@@ -185,6 +193,7 @@ class Result:
     lines: list[str] = field(default_factory=list)
     action: str = ""            # "cards" — после ответа прислать карточки группы
     notify_owner: str = ""      # сообщение владельцу (например, учитель перевёл группу)
+    ids: list[int] | None = None  # для "cards": каким ученикам (None — всем готовым)
 
 
 def _ints(value) -> bool:
@@ -198,7 +207,7 @@ def _parse(raw: str) -> dict:
         data = json.loads(raw)
     except ValueError:
         raise FormError("err_bad_data") from None
-    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in ("att", "wk", "tp", "ex", "hints", "move", "cards")
+    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in SAVERS
             or not isinstance(data.get("u"), str) or not UUID_RE.match(data["u"])
             or not _ints(data.get("g"))):
         raise FormError("err_bad_data")
@@ -219,6 +228,8 @@ def _split_students(con, group_id: int, ids: list[int]) -> tuple[list[int], int]
 
 
 def _save_attendance(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    if not repo.attendance_on(con):
+        raise FormError("err_att_off")
     try:
         day = date.fromisoformat(data.get("d", ""))
     except (TypeError, ValueError):
@@ -258,22 +269,28 @@ def _save_weekly(con, teacher, g, data, tg_id: int, today: date, lang: str) -> l
     allowed = [q["id"] for q in reports.questions_for(con, g["subject"])]
     if not isinstance(qids, list) or qids != allowed:
         raise FormError("err_questions")
+    optional = [bool(q["optional"]) for q in reports.questions_for(con, g["subject"])]
     rows = data.get("r")
     if not isinstance(rows, list) or not rows or len(rows) > 200:
         raise FormError("err_bad_data")
     parsed = {}
     for item in rows:
-        if (not isinstance(item, list) or len(item) != 3 or not _ints(item[0]) or item[0] in parsed
+        # [ученик, ответы, комментарий] или [ученик, ответы, комментарий, звезда 0/1]
+        if (not isinstance(item, list) or len(item) not in (3, 4) or not _ints(item[0]) or item[0] in parsed
                 or not isinstance(item[1], str) or len(item[1]) != len(qids)
-                or any(ch not in "0123" for ch in item[1])
-                or not isinstance(item[2], str) or len(item[2]) > COMMENT_MAX):
+                or any(ch not in ("0123-" if opt else "0123") for ch, opt in zip(item[1], optional))
+                or all(ch == "-" for ch in item[1])
+                or not isinstance(item[2], str) or len(item[2]) > COMMENT_MAX
+                or (len(item) == 4 and (not _ints(item[3]) or item[3] not in (0, 1)))):
             raise FormError("err_bad_data")
-        parsed[item[0]] = ({qid: int(ch) for qid, ch in zip(qids, item[1])}, " ".join(item[2].split()))
+        answers = {qid: int(ch) for qid, ch in zip(qids, item[1]) if ch != "-"}
+        parsed[item[0]] = (answers, " ".join(item[2].split()), len(item) == 4 and item[3] == 1)
     good, foreign = _split_students(con, g["id"], list(parsed))
     if not good:
         raise FormError("err_no_students")
     for sid in good:
-        reports.save_weekly(con, tg_id, g["id"], week, sid, *parsed[sid])
+        answers, comment, star = parsed[sid]
+        reports.save_weekly(con, tg_id, g["id"], week, sid, answers, comment, star)
     week_text = f"{week.strftime('%d.%m')}–{(week + timedelta(days=5)).strftime('%d.%m')}"
     lines = [t("saved_wk", lang, group=g["name"], week=week_text, n=len(good))]
     left = reports.students_without_report(con, g["id"], week)
@@ -396,7 +413,7 @@ def _save_hints(con, teacher, g, data, tg_id: int, today: date, lang: str) -> li
     return [t("hints_closed_n", lang, n=closed)]
 
 
-def _save_move(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+def _save_move(con, teacher, g, data, tg_id: int, today: date, lang: str, out: Result) -> list[str]:
     sid, stage_id = data.get("sid"), data.get("s")
     if not _ints(sid) or not _ints(stage_id) or not g["has_map"]:
         raise FormError("err_bad_data")
@@ -408,7 +425,7 @@ def _save_move(con, teacher, g, data, tg_id: int, today: date, lang: str) -> lis
     if sid == 0:
         old = repo.stage(con, g["stage_id"])
         moved = repo.move_group_station(con, tg_id, g["id"], stage_id, today)
-        _save_move.notify = (f"ℹ️ Учитель {teacher['name']} перевёл группу {g['name']} со станции "
+        out.notify_owner = (f"ℹ️ Учитель {teacher['name']} перевёл группу {g['name']} со станции "
                              f"{old['name_ru'] if old else '—'} на {target['name_ru']} (учеников: {len(moved)}).")
         return [t("stations_done_group", lang, group=g["name"], new=new, n=len(moved))]
     if not repo.is_enrolled(con, sid, g["id"]):
@@ -417,12 +434,25 @@ def _save_move(con, teacher, g, data, tg_id: int, today: date, lang: str) -> lis
     return [t("stations_done_student", lang, name=repo.student(con, sid)["full_name"], new=new)]
 
 
-def _save_cards(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
-    return []  # сами карточки рисует и присылает обработчик чата (Result.action = "cards")
+def _save_cards(con, teacher, g, data, tg_id: int, today: date, lang: str, out: Result) -> list[str]:
+    """Сами карточки рисует и присылает обработчик чата (Result.action = "cards").
+
+    ids — каким ученикам прислать (необязательно). Чужие номера отбрасываются.
+    """
+    ids = data.get("ids")
+    if ids is not None:
+        if not isinstance(ids, list) or not ids or len(ids) > 200 or not all(_ints(i) for i in ids):
+            raise FormError("err_bad_data")
+        out.ids = [i for i in dict.fromkeys(ids) if repo.is_enrolled(con, i, g["id"])]
+        if not out.ids:
+            raise FormError("err_no_students")
+    out.action = "cards"
+    return []
 
 
 SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic, "ex": _save_exam,
           "hints": _save_hints, "move": _save_move, "cards": _save_cards}
+NEEDS_RESULT = {"move", "cards"}   # этим обработчикам нужен сам ответ (уведомление владельцу, список)
 
 
 def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime) -> Result:
@@ -436,9 +466,10 @@ def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime
             return Result(t("duplicate", lang), data["g"])
         g = _own_group(con, teacher, data["g"])
         today = now.astimezone(schedule.TZ).date()
-        _save_move.notify = ""
+        out = Result("")
+        args = (con, teacher, g, data, tg_id, today, lang) + ((out,) if data["t"] in NEEDS_RESULT else ())
         with tx(con):
-            lines = SAVERS[data["t"]](con, teacher, g, data, tg_id, today, lang)
+            lines = SAVERS[data["t"]](*args)
             reports.record_submission(con, data["u"], tg_id, data["t"], "saved")
             new_hints = hints.evaluate_group(con, g["id"], today) if data["t"] in ("att", "wk", "ex", "move") else 0
         if new_hints:
@@ -447,8 +478,8 @@ def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime
         return Result(t("form_rejected", lang, reason=t(e.key, lang)), None)
     if (now - sent_at).total_seconds() > LATE_DELIVERY_SECONDS:
         lines.insert(0, t("late_delivery", lang, when=_when(sent_at, now, lang)))
-    return Result("\n".join(lines), g["id"], lines, action="cards" if data["t"] == "cards" else "",
-                  notify_owner=_save_move.notify)
+    out.text, out.group_id, out.lines = "\n".join(lines), g["id"], lines
+    return out
 
 
 def _when(sent_at: datetime, now: datetime, lang: str) -> str:

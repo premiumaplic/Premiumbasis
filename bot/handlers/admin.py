@@ -13,7 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from bot import repo, schedule
+from bot import panel, repo, schedule
 from bot.access import OwnerOnly
 from bot.db import tx
 from bot.handlers.common import show
@@ -87,7 +87,16 @@ def menu_markup(teacher) -> object:
 
 @router.message(CommandStart())
 @router.message(Command("admin"))
-async def start(message: Message, state: FSMContext, teacher=None) -> None:
+async def start(message: Message, state: FSMContext, con, conf, teacher=None) -> None:
+    await state.clear()
+    await message.answer("📊 Панель центра — кнопка под полем ввода: итоги недели, учителя, группы, "
+                         "станции учеников, кому нужна помощь." + ("\nТам же — ваши группы как учителя." if teacher else ""),
+                         reply_markup=panel.keyboard(con, conf, teacher))
+    await message.answer("Меню владельца. Что настроить?", reply_markup=menu_markup(teacher))
+
+
+@router.message(F.text == panel.BTN_MENU)
+async def menu_button(message: Message, state: FSMContext, teacher=None) -> None:
     await state.clear()
     await message.answer("Меню владельца. Что настроить?", reply_markup=menu_markup(teacher))
 
@@ -802,12 +811,15 @@ SETTINGS = {
     "hint_drop_steps": ("Подсказка: падение показателя на столько ступеней", "int:1:3"),
     "hint_exam_weeks": ("Подсказка: за сколько недель до экзамена проверять риск", "int:1:8"),
     "hint_growth_weeks": ("Похвала: недель роста подряд", "int:2:8"),
+    "attendance_on": ("Посещаемость в боте", "bool"),   # новые настройки — в конец (номера кнопок не меняются)
 }
 WEEKDAY_FULL = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 
 
 def setting_view(key: str, value: str) -> str:
     kind = SETTINGS[key][1]
+    if kind == "bool":
+        return "включена" if value == "1" else "выключена"
     if kind == "weekday" and value.isdigit() and 1 <= int(value) <= 7:
         return WEEKDAY_FULL[int(value) - 1]
     return value or "не задано"
@@ -846,13 +858,24 @@ async def settings(cb: CallbackQuery, state: FSMContext, con) -> None:
     keys = list(SETTINGS)
     lines = ["Настройки. Пороги подсказок — стартовые предположения, через месяц их стоит подстроить.", ""]
     lines += [f"• {SETTINGS[k][0]}: {setting_view(k, values.get(k, ''))}" for k in keys]
-    buttons = [(SETTINGS[k][0][:40], A(act="set", arg=i)) for i, k in enumerate(keys)]
+    buttons = [((f"{SETTINGS[k][0]}: {setting_view(k, values.get(k, ''))}" if SETTINGS[k][1] == "bool"
+                 else SETTINGS[k][0])[:40], A(act="set", arg=i)) for i, k in enumerate(keys)]
     await show(cb, "\n".join(lines), kb(*column(buttons), [("⬅️ Меню", A(act="menu"))]))
 
 
 @router.callback_query(A.filter(F.act == "set"))
 async def setting_edit(cb: CallbackQuery, callback_data: A, state: FSMContext, con) -> None:
     key = list(SETTINGS)[callback_data.arg]
+    if SETTINGS[key][1] == "bool":
+        # переключатель: нажали — поменялось
+        repo.set_setting(con, cb.from_user.id, key, "0" if repo.get_setting(con, key) == "1" else "1")
+        note = ""
+        if key == "attendance_on":
+            note = ("\nУчителя увидят раздел «Посещаемость» после «🔄 Обновить»; на карточке появится посещаемость за месяц."
+                    if repo.attendance_on(con) else
+                    "\nРаздел «Посещаемость» скрыт у учителей, на карточках и в сводке. Отметки в базе сохранены.")
+        await cb.message.answer(f"{SETTINGS[key][0]}: {setting_view(key, repo.get_setting(con, key))}.{note}")
+        return await settings(cb, state, con)
     await state.set_state(EditSetting.value)
     await state.update_data(key=key)
     await show(cb, f"{SETTINGS[key][0]}.\nСейчас: {setting_view(key, repo.get_setting(con, key))}\n\n"

@@ -130,6 +130,7 @@ def test_teacher_sends_form_and_gets_fresh_keyboard(chat, con):
     gid = make_group(con, "10-А", teacher_id=tid)
     from bot import schedule
     sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, schedule.today())
+    repo.set_setting(con, OWNER, "attendance_on", "1")
     data = json.dumps({"v": 1, "u": str(uuid.uuid4()), "t": "att", "g": gid,
                        "d": schedule.today().isoformat(), "m": [[sid, 1]]})
     chat.n += 1
@@ -208,6 +209,7 @@ def test_teacher_hints_button_and_close(chat, con):
     tid = make_teacher(con, TEACHER_TG)
     gid = make_group(con, "10-А", teacher_id=tid)
     sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, schedule.today())
+    repo.set_setting(con, OWNER, "attendance_on", "1")
     for back in (2, 1):
         reports.save_attendance(con, 1, gid, schedule.today() - dt.timedelta(days=back), [(sid, "absent")])
     run(chat.press(TEACHER_TG, f"t:group:{gid}"))
@@ -397,6 +399,7 @@ def test_app_actions_hints_move_cards(chat, con):
     gid = make_group(con, "Kids-1", teacher_id=tid, stage="roundup3")
     today = schedule.today()
     sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, today)
+    repo.set_setting(con, OWNER, "attendance_on", "1")
     for back in (2, 1):
         reports.save_attendance(con, 1, gid, today - dt.timedelta(days=back), [(sid, "absent")])
     hints_mod.evaluate_group(con, gid, today)
@@ -418,3 +421,74 @@ def test_app_actions_hints_move_cards(chat, con):
     reports.save_weekly(con, TEACHER_TG, gid, reports.week_start(today), sid, {1: 3}, "")
     calls = _form(chat, TEACHER_TG, {"t": "cards", "g": gid})
     assert len([c for c in calls if type(c).__name__ == "SendPhoto"]) == 1
+
+
+def test_owner_panel_keyboard_and_commands(chat, con):
+    import json
+    from bot import reports, schedule
+    from bot.payload import decode_param
+    tid = make_teacher(con, TEACHER_TG, "Дилноза Ахмедова")
+    gid = make_group(con, "10-А", teacher_id=tid)
+    today = schedule.today()
+    a = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, today)
+    repo.add_student(con, OWNER, "Мадина Юсупова", "uz", True, gid, today)
+    reports.save_weekly(con, TEACHER_TG, gid, reports.week_start(today), a, {1: 3, 2: 2}, "", True)
+    # /start владельца: кнопка панели под полем ввода и меню
+    calls = run(chat.send(OWNER, "/start"))
+    kb = next(c.reply_markup for c in calls if getattr(c, "reply_markup", None) is not None
+              and hasattr(c.reply_markup, "keyboard"))
+    panel_btn = next(b for row in kb.keyboard for b in row if b.web_app)
+    data = decode_param(panel_btn.web_app.url.split("#d=")[1])
+    dump = json.dumps(data, ensure_ascii=False)
+    assert data["f"] == "owner" and data["g"][0][6:8] == [2, 1] and data["g"][0][14] == 1
+    assert "Каримов" not in dump and "Ахмедова" not in dump and data["t"][0][1] == "Дилноза А."
+    assert "Меню владельца" in last_text(calls)
+    assert "Меню владельца" in last_text(run(chat.send(OWNER, "☰ Меню владельца")))
+    # команда «напомнить»: учитель получает список, повтор той же команды не выполняется
+    payload = {"t": "o_remind", "u": "11111111-1111-4111-8111-111111111111"}
+    calls = _form(chat, OWNER, payload)
+    assert any(getattr(c, "chat_id", None) == TEACHER_TG and "Мадина Ю." in c.text for c in calls
+               if type(c).__name__ == "SendMessage")
+    assert "Напоминание отправлено учителям: 1" in last_text(calls)
+    assert "уже выполнена" in last_text(_form(chat, OWNER, payload))
+    assert "Сводка за неделю" in last_text(_form(chat, OWNER, {"t": "o_summary"}))
+    # учитель не может прислать команду панели
+    assert "Форма не сохранена" in last_text(_form(chat, TEACHER_TG, {"t": "o_remind", "g": gid}))
+
+
+def test_owner_who_teaches_gets_both(chat, con):
+    from bot import schedule
+    tid = repo.save_teacher(con, OWNER, OWNER, "Владелец Учит", "ru")[0]
+    gid = make_group(con, "11-Б", teacher_id=tid)
+    sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, schedule.today())
+    calls = run(chat.send(OWNER, "🔄 Обновить"))
+    kb = calls[-1].reply_markup
+    texts = [b.text for row in kb.keyboard for b in row]
+    assert "📊 Панель центра" in texts and any(x.startswith("📱 11-Б") for x in texts)
+    # форма учителя от владельца-учителя обрабатывается как форма учителя
+    calls = _form(chat, OWNER, {"t": "tp", "g": gid, "text": "Present Simple"})
+    assert "Сохранено: тема 11-Б" in last_text(calls)
+    assert any(b.text == "📊 Панель центра" for row in calls[-1].reply_markup.keyboard for b in row)
+    assert sid
+
+
+def test_attendance_toggle_in_settings(chat, con):
+    from bot.handlers.admin import SETTINGS
+    idx = list(SETTINGS).index("attendance_on")
+    calls = run(chat.press(OWNER, f"a:set:0:{idx}"))
+    assert repo.attendance_on(con) and any("включена" in (getattr(c, "text", "") or "") for c in calls)
+    run(chat.press(OWNER, f"a:set:0:{idx}"))
+    assert not repo.attendance_on(con)
+
+
+def test_owner_question_toggles_and_station_texts(chat, con):
+    q = con.execute("SELECT id FROM questions WHERE code = 'reading'").fetchone()["id"]
+    run(chat.press(OWNER, f"a:q_optional:{q}:0"))
+    assert con.execute("SELECT optional FROM questions WHERE id = ?", (q,)).fetchone()[0] == 0
+    run(chat.press(OWNER, f"a:q_active:{q}:0"))
+    assert con.execute("SELECT active FROM questions WHERE id = ?", (q,)).fetchone()[0] == 0
+    st = repo.stage_by_code(con, "math", "g3")["id"]
+    run(chat.press(OWNER, f"a:station_txt:{st}:0"))
+    assert "две части" in last_text(run(chat.send(OWNER, "без разделителя")))
+    run(chat.send(OWNER, "Таблица умножения | Karra jadvali"))
+    assert repo.stage(con, st)["about_ru"] == "Таблица умножения"

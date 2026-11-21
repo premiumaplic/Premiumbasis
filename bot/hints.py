@@ -61,10 +61,12 @@ def check_student(con, student_id: int, g, on: date) -> dict[str, dict]:
     fired: dict[str, dict] = {}
     gid = g["id"]
 
-    # ---- посещаемость
-    att = con.execute("SELECT lesson_date, status FROM attendance WHERE student_id = ? AND group_id = ? "
-                      "AND lesson_date <= ? ORDER BY lesson_date DESC LIMIT 60",
-                      (student_id, gid, on.isoformat())).fetchall()
+    # ---- посещаемость (только если владелец её включил)
+    att = []
+    if repo.attendance_on(con):
+        att = con.execute("SELECT lesson_date, status FROM attendance WHERE student_id = ? AND group_id = ? "
+                          "AND lesson_date <= ? ORDER BY lesson_date DESC LIMIT 60",
+                          (student_id, gid, on.isoformat())).fetchall()
     counted = [r for r in att if r["status"] != "excused"]  # уважительная причина не считается
     streak = []
     for r in counted:

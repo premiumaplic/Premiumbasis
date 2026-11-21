@@ -17,6 +17,7 @@ def setup(con, stage="a1", start=dt.date(2026, 9, 1)):
 
 
 def att(con, gid, sid, items):
+    repo.set_setting(con, ACTOR, "attendance_on", "1")   # посещаемость включена владельцем
     for day, status in items:
         reports.save_attendance(con, 1, gid, dt.date.fromisoformat(day), [(sid, status)])
 

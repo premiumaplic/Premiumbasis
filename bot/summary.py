@@ -49,11 +49,21 @@ def text(con, week: date) -> str:
         lines.append("")
     lines.insert(1, f"Отчёты заполнены: {total_done} из {total_students}")
 
-    att = con.execute("SELECT status, count(*) AS k FROM attendance WHERE lesson_date BETWEEN ? AND ? "
-                      "GROUP BY status", (week.isoformat(), (week + timedelta(days=6)).isoformat())).fetchall()
-    by = {r["status"]: r["k"] for r in att}
-    lines.append(f"Посещаемость за неделю: пропусков {by.get('absent', 0)}, опозданий {by.get('late', 0)}, "
-                 f"по уважительной {by.get('excused', 0)}")
+    if repo.attendance_on(con):
+        att = con.execute("SELECT status, count(*) AS k FROM attendance WHERE lesson_date BETWEEN ? AND ? "
+                          "GROUP BY status", (week.isoformat(), (week + timedelta(days=6)).isoformat())).fetchall()
+        by = {r["status"]: r["k"] for r in att}
+        lines.append(f"Посещаемость за неделю: пропусков {by.get('absent', 0)}, опозданий {by.get('late', 0)}, "
+                     f"по уважительной {by.get('excused', 0)}")
+    stars = con.execute("SELECT count(*) FROM weekly_reports WHERE week_start = ? AND star = 1",
+                        (week.isoformat(),)).fetchone()[0]
+    if stars:
+        lines.append(f"⭐ Звёзд недели: {stars}")
+    from bot import panel, schedule
+    soon = panel.exams_soon(con, max(week, schedule.today()), 14)
+    if soon:
+        lines.append("🎓 Экзамены в ближайшие 2 недели: " + ", ".join(
+            f"{g['name']} — {schedule.human_date(d)}" for d, g in soon[:10]))
     open_count = sum(len(hints.open_hints(con, g["id"])) for g in repo.list_groups(con))
     lines.append(f"Открытых подсказок у учителей: {open_count}")
     return "\n".join(lines)

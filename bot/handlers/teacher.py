@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
-from bot import card, forms, hints, hub, repo, reports, schedule
+from bot import card, forms, hints, hub, panel, repo, reports, schedule
 from bot.config import data_dir
 from bot.access import TeacherOnly
 from bot.handlers.common import show
@@ -35,32 +35,37 @@ def groups_markup(con, teacher) -> object:
     return kb(*column(buttons, 2)) if buttons else None
 
 
-async def send_groups(target, con, conf, teacher) -> None:
+def keyboard(con, conf, teacher, is_owner: bool = False):
+    """Кнопки под полем ввода: группы учителя (а владельцу-учителю — ещё и панель центра)."""
+    return panel.keyboard(con, conf, teacher) if is_owner else hub.teacher_keyboard(con, conf, teacher)
+
+
+async def send_groups(target, con, conf, teacher, is_owner: bool = False) -> None:
     """Приветствие и кнопки под полем ввода: по кнопке-приложению на каждую группу."""
     lang = teacher["lang"]
-    markup = hub.teacher_keyboard(con, conf, teacher)
+    markup = keyboard(con, conf, teacher, is_owner)
     message = target.message if isinstance(target, CallbackQuery) else target
     if isinstance(target, CallbackQuery):
         await target.answer()
-    if markup is None:
-        return await message.answer(t("no_groups", lang, name=teacher["name"]))
+    if markup is None or (is_owner and not repo.list_groups(con, teacher_id=teacher["id"])):
+        return await message.answer(t("no_groups", lang, name=teacher["name"]), reply_markup=markup)
     await message.answer(t("hub_hello", lang, name=teacher["name"]), reply_markup=markup)
 
 
 @router.message(CommandStart())
-async def start(message: Message, state: FSMContext, con, conf, teacher) -> None:
+async def start(message: Message, state: FSMContext, con, conf, teacher, is_owner: bool = False) -> None:
     await state.clear()
-    await send_groups(message, con, conf, teacher)
+    await send_groups(message, con, conf, teacher, is_owner)
 
 
 @router.message(F.text.in_(all_variants("btn_other_group") | all_variants("btn_refresh")))
-async def refresh(message: Message, con, conf, teacher) -> None:
-    await send_groups(message, con, conf, teacher)
+async def refresh(message: Message, con, conf, teacher, is_owner: bool = False) -> None:
+    await send_groups(message, con, conf, teacher, is_owner)
 
 
 @router.callback_query(T.filter(F.act == "groups"))
-async def groups_button(cb: CallbackQuery, con, conf, teacher) -> None:
-    await send_groups(cb, con, conf, teacher)
+async def groups_button(cb: CallbackQuery, con, conf, teacher, is_owner: bool = False) -> None:
+    await send_groups(cb, con, conf, teacher, is_owner)
 
 
 @router.message(F.text.startswith("📂 "))
@@ -85,25 +90,25 @@ async def choose_group(cb: CallbackQuery, callback_data: T, con, conf, teacher) 
     reports.set_current_group(con, teacher["id"], g["id"])
     await cb.answer()
     await cb.message.answer(t("group_chosen", lang, header=schedule.group_header(g, lang)),
-                            reply_markup=hub.teacher_keyboard(con, conf, teacher))
+                            reply_markup=hub.teacher_keyboard(con, conf, teacher))  # старые кнопки чата
 
 
 @router.message(F.web_app_data)
-async def form_data(message: Message, bot: Bot, con, conf, teacher) -> None:
+async def form_data(message: Message, bot: Bot, con, conf, teacher, is_owner: bool = False) -> None:
     now = datetime.now(timezone.utc)
     result = forms.process(con, teacher, message.from_user.id, message.web_app_data.data, message.date, now)
     log.info("Форма от %s: %s", message.from_user.id, "сохранено" if result.group_id else "отклонено")
     if result.text:
         # данные групп в кнопках-приложениях обновляются после каждого сохранения
-        await message.answer(result.text, reply_markup=hub.teacher_keyboard(con, conf, teacher))
+        await message.answer(result.text, reply_markup=keyboard(con, conf, teacher, is_owner))
     if result.notify_owner and conf.owner_id and conf.owner_id != message.from_user.id:
         try:
             await bot.send_message(conf.owner_id, result.notify_owner)
         except TelegramAPIError:
             pass
     if result.action == "cards" and result.group_id:
-        await send_cards_for(message, con, teacher, repo.group(con, result.group_id))
-        await message.answer("✅", reply_markup=hub.teacher_keyboard(con, conf, teacher))
+        await send_cards_for(message, con, teacher, repo.group(con, result.group_id), result.ids)
+        await message.answer("✅", reply_markup=keyboard(con, conf, teacher, is_owner))
 
 
 def cards_week(con, group_id: int, today) -> object:
@@ -124,13 +129,18 @@ async def send_cards(message: Message, con, teacher) -> None:
     await send_cards_for(message, con, teacher, g)
 
 
-async def send_cards_for(message: Message, con, teacher, g) -> None:
-    """Рисует и присылает карточки группы: только ученики с отчётом за неделю и согласием родителя."""
+async def send_cards_for(message: Message, con, teacher, g, only: list[int] | None = None) -> None:
+    """Рисует и присылает карточки группы: только ученики с отчётом за неделю и согласием родителя.
+
+    only — номера учеников, которых учитель выбрал в приложении (None — все готовые).
+    """
     lang = teacher["lang"]
     today = schedule.today()
     week = cards_week(con, g["id"], today)
     done = reports.reports_for_weeks(con, g["id"], [week])
     students = repo.group_students(con, g["id"])
+    if only is not None:
+        students = [s for s in students if s["id"] in set(only)]
     ready = [s for s in students if s["consent"] and s["id"] in done]
     skipped = [(s, "cards_no_consent" if not s["consent"] else "cards_no_report")
                for s in students if s not in ready]

@@ -4,13 +4,14 @@ import logging
 import re
 
 from aiogram import Bot, F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from bot import backup, config, reports, repo, schedule, summary
+from bot import backup, config, panel, reminders, reports, repo, schedule, summary
 from bot.access import OwnerOnly
+from bot.texts import all_variants, t
 from bot.db import tx
 from bot.handlers.admin import nav
 from bot.handlers.common import show
@@ -26,6 +27,7 @@ class EditTexts(StatesGroup):
     topics = State()
     question = State()
     phrases = State()
+    station = State()
 
 
 # ================================================================ бэкап и сводка
@@ -96,6 +98,59 @@ async def summary_now(event, con) -> None:
         await event.answer(text)
 
 
+# ================================================================ панель центра
+
+class PanelAction(Filter):
+    """Данные из панели владельца (а не из форм учителя — те обрабатывает чат учителя)."""
+
+    async def __call__(self, message: Message) -> bool | dict:
+        if not message.web_app_data:
+            return False
+        action = panel.parse_action(message.web_app_data.data)
+        return {"action": action} if action else False
+
+
+@router.message(F.text.in_(all_variants("btn_refresh")))
+async def refresh_panel(message: Message, con, conf, teacher=None) -> None:
+    text = "Панель центра обновлена — кнопка под полем ввода."
+    if teacher is not None:
+        text = t("hub_hello", teacher["lang"], name=teacher["name"])
+    await message.answer(text, reply_markup=panel.keyboard(con, conf, teacher))
+
+
+async def remind_now(bot: Bot, con) -> int:
+    """Напоминание учителям прямо сейчас — тем, у кого есть незаполненные отчёты этой недели."""
+    week = reports.week_start(schedule.today()).isoformat()
+    sent = 0
+    for tg_id, text in reminders.messages(con, week):
+        try:
+            await bot.send_message(tg_id, text)
+            sent += 1
+        except Exception as e:  # noqa: BLE001 — один недоступный учитель не мешает остальным
+            log.warning("Напоминание учителю %s не доставлено: %s", tg_id, type(e).__name__)
+    return sent
+
+
+@router.message(F.web_app_data, PanelAction())
+async def panel_action(message: Message, bot: Bot, con, conf, action: str, teacher=None) -> None:
+    kind, uuid = action.split(":", 1)
+    if reports.submission_seen(con, uuid):
+        return await message.answer("Эта команда уже выполнена.", reply_markup=panel.keyboard(con, conf, teacher))
+    reports.record_submission(con, uuid, message.from_user.id, kind, "saved")
+    log.info("Команда панели от владельца: %s", kind)
+    if kind == "o_remind":
+        sent = await remind_now(bot, con)
+        repo.audit(con, message.from_user.id, "remind_now", "", f"sent={sent}")
+        text = (f"⏰ Напоминание отправлено учителям: {sent}." if sent
+                else "Напоминать некому: у всех учителей отчёты этой недели заполнены 👍")
+    elif kind == "o_summary":
+        text = summary.text(con, reports.week_start(schedule.today()))
+    else:
+        await message.answer("Делаю бэкап…")
+        text = await do_backup(bot, con, conf)
+    await message.answer(text, reply_markup=panel.keyboard(con, conf, teacher))
+
+
 # ================================================================ тексты
 
 @router.callback_query(A.filter(F.act == "texts"))
@@ -105,6 +160,7 @@ async def texts_menu(cb: CallbackQuery, state: FSMContext) -> None:
         [("📚 Юниты книги (темы)", A(act="topics"))],
         [("❓ Вопросы недели", A(act="questions"))],
         [("💬 Готовые фразы", A(act="phrases"))],
+        [("🗺 Станции карты (описания)", A(act="stations_txt"))],
         [("⬅️ Меню", A(act="menu"))]))
 
 
@@ -183,7 +239,12 @@ FIELDS = {1: ("text_ru", "вопрос по-русски"), 2: ("opts_ru", "4 в
 
 def question_text(q) -> str:
     subjects = "все предметы" if q["subjects"] == "*" else q["subjects"].replace("math", "математика")
-    lines = [f"❓ {q['text_ru']}  ({subjects})"]
+    flags = []
+    if q["optional"]:
+        flags.append("можно пропустить")
+    if not q["active"]:
+        flags.append("ВЫКЛЮЧЕН")
+    lines = [f"❓ {q['text_ru']}  ({subjects})" + (f" — {', '.join(flags)}" if flags else "")]
     lines += [f"   {i} — {q[f'opt{i}_ru']}" for i in range(4)]
     lines.append(f"🇺🇿 {q['text_uz']}" + ("" if q["uz_checked"] else "  (черновик, не проверен)"))
     lines += [f"   {i} — {q[f'opt{i}_uz']}" for i in range(4)]
@@ -193,9 +254,11 @@ def question_text(q) -> str:
 @router.callback_query(A.filter(F.act == "questions"))
 async def questions_menu(cb: CallbackQuery, state: FSMContext, con) -> None:
     await state.clear()
-    rows = con.execute("SELECT * FROM questions WHERE active = 1 ORDER BY sort").fetchall()
-    buttons = [(q["text_ru"] + ("" if q["uz_checked"] else " ✎"), A(act="question", id=q["id"])) for q in rows]
-    await show(cb, "Вопросы недели. ✎ — узбекский текст ещё не проверен.\n"
+    rows = con.execute("SELECT * FROM questions ORDER BY active DESC, sort").fetchall()
+    buttons = [(("🚫 " if not q["active"] else "⏭ " if q["optional"] else "") + q["text_ru"]
+                + ("" if q["uz_checked"] else " ✎"), A(act="question", id=q["id"])) for q in rows]
+    await show(cb, "Вопросы недели. ✎ — узбекский текст ещё не проверен; ⏭ — учитель может пропустить "
+                   "(«не оценивал»); 🚫 — вопрос выключен.\n"
                    "Варианты идут от худшего (0) к лучшему (3).",
                kb(*column(buttons, 2), [("⬅️ Тексты", A(act="texts"))]))
 
@@ -210,7 +273,23 @@ async def question_card(cb: CallbackQuery, callback_data: A, state: FSMContext, 
         [("✏️ Вопрос UZ", A(act="q_edit", id=qid, arg=3)), ("✏️ Варианты UZ", A(act="q_edit", id=qid, arg=4))],
         [("✅ Узбекский проверен" if not q["uz_checked"] else "↩️ Снять отметку «проверен»",
           A(act="q_checked", id=qid))],
+        [("⏭ Сделать обязательным" if q["optional"] else "⏭ Разрешить пропускать", A(act="q_optional", id=qid)),
+         ("✅ Включить" if not q["active"] else "🚫 Выключить", A(act="q_active", id=qid))],
         [("⬅️ Вопросы", A(act="questions"))]))
+
+
+@router.callback_query(A.filter(F.act.in_({"q_optional", "q_active"})))
+async def question_toggle(cb: CallbackQuery, callback_data: A, state: FSMContext, con) -> None:
+    column_name = "optional" if callback_data.act == "q_optional" else "active"
+    if column_name == "active":
+        q = con.execute("SELECT * FROM questions WHERE id = ?", (callback_data.id,)).fetchone()
+        left = con.execute("SELECT count(*) FROM questions WHERE active = 1 AND id != ? AND (subjects = '*' "
+                           "OR subjects = ?)", (q["id"], q["subjects"])).fetchone()[0]
+        if q["active"] and left < 2:
+            return await cb.answer("Нельзя: должно остаться хотя бы 2 вопроса.", show_alert=True)
+    con.execute(f"UPDATE questions SET {column_name} = 1 - {column_name} WHERE id = ?", (callback_data.id,))
+    repo.audit(con, cb.from_user.id, f"question_{column_name}", f"question:{callback_data.id}")
+    await question_card(cb, callback_data, state, con)
 
 
 @router.callback_query(A.filter(F.act == "q_checked"))
@@ -288,3 +367,43 @@ async def phrases_save(message: Message, state: FSMContext, con) -> None:
                         [(10 * (i + 1), ru, uz) for i, (ru, uz) in enumerate(items)])
         repo.audit(con, message.from_user.id, "phrases", "", f"count={len(items)}")
     await message.answer(f"Сохранено: фраз {len(items)}.", reply_markup=kb([("⬅️ Меню", A(act="menu"))]))
+
+
+# ---- описания станций карты
+
+@router.callback_query(A.filter(F.act == "stations_txt"))
+async def stations_texts(cb: CallbackQuery, state: FSMContext, con) -> None:
+    await state.clear()
+    buttons = []
+    for subj in repo.list_subjects(con):
+        for st in repo.list_stages(con, subj["code"]):
+            buttons.append((f"{st['name_ru']}" + ("" if st["about_ru"] else " ·"), A(act="station_txt", id=st["id"])))
+    await show(cb, "Описание станции видно учителю на карте и родителю на карточке: что проходят на этой станции. "
+                   "Точка — описания нет.", kb(*column(buttons, 3), [("⬅️ Тексты", A(act="texts"))]))
+
+
+@router.callback_query(A.filter(F.act == "station_txt"))
+async def station_text(cb: CallbackQuery, callback_data: A, state: FSMContext, con) -> None:
+    st = repo.stage(con, callback_data.id)
+    await state.set_state(EditTexts.station)
+    await state.update_data(stage_id=st["id"])
+    await show(cb, f"🗺 {st['name_ru']} ({st['section_ru'] or 'без раздела'})\n"
+                   f"RU: {st['about_ru'] or '—'}\nUZ: {st['about_uz'] or '—'}\n\n"
+                   "Чтобы изменить, пришлите описание: русский и узбекский через «|», каждое до 60 знаков. Например:\n"
+                   "Таблица умножения и деление | Karra jadvali va boʻlish",
+               kb(nav(A(act="stations_txt"))))
+
+
+@router.message(EditTexts.station)
+async def station_text_save(message: Message, state: FSMContext, con) -> None:
+    text = message.text or ""
+    parts = [" ".join(x.split()) for x in text.split("|")]
+    if len(parts) != 2 or not all(0 < len(p) <= 60 for p in parts):
+        return await message.answer("Нужно две части через «|», каждая от 1 до 60 знаков.",
+                                    reply_markup=kb(nav(A(act="stations_txt"))))
+    stage_id = (await state.get_data())["stage_id"]
+    await state.clear()
+    con.execute("UPDATE stages SET about_ru = ?, about_uz = ? WHERE id = ?", (*parts, stage_id))
+    repo.audit(con, message.from_user.id, "station_about", f"stage:{stage_id}")
+    await message.answer("Сохранено.", reply_markup=kb([("🗺 Станции карты", A(act="stations_txt"))],
+                                                      [("⬅️ Меню", A(act="menu"))]))

@@ -49,19 +49,19 @@ def save_attendance(con, tg_id: int, group_id: int, lesson_date: date, marks: li
 # ---------------------------------------------------------------- недельные отчёты
 
 def reports_for_weeks(con, group_id: int, weeks: list[date]) -> dict[int, dict[str, dict]]:
-    """{student_id: {week_iso: {"answers": {question_id: value}, "comment": str}}}"""
+    """{student_id: {week_iso: {"answers": {question_id: value}, "comment": str, "star": bool}}}"""
     if not weeks:
         return {}
     marks = "?" + ",?" * (len(weeks) - 1)
     rows = con.execute(
-        f"SELECT r.id, r.student_id, r.week_start, r.comment, a.question_id, a.value "
+        f"SELECT r.id, r.student_id, r.week_start, r.comment, r.star, a.question_id, a.value "
         f"FROM weekly_reports r LEFT JOIN weekly_answers a ON a.report_id = r.id "
         f"WHERE r.group_id = ? AND r.week_start IN ({marks})",
         [group_id, *[w.isoformat() for w in weeks]]).fetchall()
     out: dict[int, dict[str, dict]] = {}
     for r in rows:
         item = out.setdefault(r["student_id"], {}).setdefault(
-            r["week_start"], {"answers": {}, "comment": r["comment"]})
+            r["week_start"], {"answers": {}, "comment": r["comment"], "star": bool(r["star"])})
         if r["question_id"] is not None:
             item["answers"][r["question_id"]] = r["value"]
     return out
@@ -82,19 +82,24 @@ def last_answers_before(con, group_id: int, week: date) -> dict[int, dict[int, i
 
 
 def save_weekly(con, tg_id: int, group_id: int, week: date, student_id: int,
-                answers: dict[int, int], comment: str) -> None:
-    """Сохраняет отчёт ученика за неделю. Пустой комментарий не стирает прежний."""
+                answers: dict[int, int], comment: str, star: bool = False) -> None:
+    """Сохраняет отчёт ученика за неделю. Пустой комментарий не стирает прежний.
+
+    answers — только оценённые вопросы (необязательный вопрос можно пропустить).
+    star — «звезда недели» (значок на карточке родителю).
+    """
     row = con.execute("SELECT id, comment FROM weekly_reports WHERE student_id = ? AND group_id = ? "
                       "AND week_start = ?", (student_id, group_id, week.isoformat())).fetchone()
     if row:
         report_id = row["id"]
-        con.execute("UPDATE weekly_reports SET comment = ?, created_by = ?, created_at = datetime('now') "
-                    "WHERE id = ?", (comment or row["comment"], tg_id, report_id))
+        con.execute("UPDATE weekly_reports SET comment = ?, star = ?, created_by = ?, created_at = datetime('now') "
+                    "WHERE id = ?", (comment or row["comment"], int(star), tg_id, report_id))
         con.execute("DELETE FROM weekly_answers WHERE report_id = ?", (report_id,))
     else:
         report_id = con.execute(
-            "INSERT INTO weekly_reports (student_id, group_id, week_start, comment, created_by) "
-            "VALUES (?, ?, ?, ?, ?)", (student_id, group_id, week.isoformat(), comment, tg_id)).lastrowid
+            "INSERT INTO weekly_reports (student_id, group_id, week_start, comment, star, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?)", (student_id, group_id, week.isoformat(), comment, int(star),
+                                          tg_id)).lastrowid
     con.executemany("INSERT INTO weekly_answers (report_id, question_id, value) VALUES (?, ?, ?)",
                     [(report_id, qid, value) for qid, value in answers.items()])
 
@@ -105,6 +110,27 @@ def students_without_report(con, group_id: int, week: date) -> list:
         "WHERE e.group_id = ? AND e.date_to IS NULL AND s.active = 1 AND NOT EXISTS ("
         "  SELECT 1 FROM weekly_reports r WHERE r.student_id = s.id AND r.group_id = ? AND r.week_start = ?) "
         "ORDER BY s.full_name", (group_id, group_id, week.isoformat())).fetchall()
+
+
+def week_levels(con, group_id: int, weeks: list[date]) -> dict[int, dict[str, float]]:
+    """Средний уровень (0–3) каждого ученика группы по неделям: {student_id: {week_iso: level}}."""
+    if not weeks:
+        return {}
+    marks = "?" + ",?" * (len(weeks) - 1)
+    rows = con.execute(
+        f"SELECT r.student_id, r.week_start, avg(a.value) AS level FROM weekly_reports r "
+        f"JOIN weekly_answers a ON a.report_id = r.id "
+        f"WHERE r.group_id = ? AND r.week_start IN ({marks}) GROUP BY r.student_id, r.week_start",
+        [group_id, *[w.isoformat() for w in weeks]]).fetchall()
+    out: dict[int, dict[str, float]] = {}
+    for r in rows:
+        out.setdefault(r["student_id"], {})[r["week_start"]] = r["level"]
+    return out
+
+
+def level_char(level: float | None) -> str:
+    """Уровень 0–3 одним знаком для ссылки приложения: 0…9, «-» — отчёта нет."""
+    return "-" if level is None else str(min(9, max(0, round(level * 3))))
 
 
 # ---------------------------------------------------------------- темы

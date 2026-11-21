@@ -69,6 +69,7 @@ TEXTS = {
                  "uz": "faqat joriy yoki oʻtgan haftani toʻldirish mumkin."},
     "err_questions": {"ru": "вопросы недели изменились — откройте форму заново.",
                       "uz": "hafta savollari oʻzgardi — shaklni qayta oching."},
+    "err_att_off": {"ru": "посещаемость выключена владельцем.", "uz": "davomat markaz egasi tomonidan oʻchirilgan."},
     "err_no_students": {"ru": "ни один ученик не из этой группы.", "uz": "birorta oʻquvchi bu guruhdan emas."},
     "btn_exam": {"ru": "🎓 Экзамен", "uz": "🎓 Imtihon"},
     "btn_cards": {"ru": "📤 Карточки для родителей", "uz": "📤 Ota-onalar uchun kartalar"},
@@ -120,8 +121,8 @@ TEXTS = {
     "btn_close_hint": {"ru": "✓ Закрыть", "uz": "✓ Yopish"},
     "hint_closed": {"ru": "✓ Закрыто", "uz": "✓ Yopildi"},
     "new_hints": {
-        "ru": "⚠️ Новых подсказок: {n} — кнопка «⚠️ Подсказки».",
-        "uz": "⚠️ Yangi maslahatlar: {n} — «⚠️ Maslahatlar» tugmasi.",
+        "ru": "💡 Новых подсказок: {n} — откройте журнал группы → «Подсказки».",
+        "uz": "💡 Yangi maslahatlar: {n} — guruh jurnalini oching → «Maslahatlar».",
     },
     "btn_stations": {"ru": "🗺 Станции", "uz": "🗺 Bosqichlar"},
     "btn_back": {"ru": "⬅️ Назад", "uz": "⬅️ Orqaga"},
@@ -162,10 +163,12 @@ TEXTS = {
     "hub_placeholder": {"ru": "Откройте журнал группы кнопкой ниже", "uz": "Guruh jurnalini pastdagi tugma bilan oching"},
     "hub_hello": {
         "ru": "Здравствуйте, {name}! Нажмите кнопку с группой внизу — откроется журнал группы: "
-              "посещаемость, недельный отчёт, экзамен, тема, станции, подсказки и карточки для родителей.\n\n"
+              "недельный отчёт, ученики и их динамика, карта станций, итоги, экзамен, тема, подсказки "
+              "и карточки для родителей.\n\n"
               "Если кнопок не видно — нажмите значок клавиатуры справа в строке ввода.",
         "uz": "Assalomu alaykum, {name}! Pastdagi guruh tugmasini bosing — guruh jurnali ochiladi: "
-              "davomat, haftalik hisobot, imtihon, mavzu, bosqichlar, maslahatlar va ota-onalar uchun kartalar.\n\n"
+              "haftalik hisobot, oʻquvchilar va ularning oʻsishi, bosqichlar xaritasi, natijalar, imtihon, mavzu, "
+              "maslahatlar va ota-onalar uchun kartalar.\n\n"
               "Tugmalar koʻrinmasa — yozish maydonining oʻngidagi klaviatura belgisini bosing.",
     },
     "hub_refreshed": {"ru": "Кнопки обновлены.", "uz": "Tugmalar yangilandi."},

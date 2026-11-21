@@ -19,11 +19,12 @@
         [3, "Новые слова", "не выучены", "выучена часть", "выучено большинство", "выучены все"],
         [4, "Грамматика темы", "не понял", "понимает с подсказкой", "применяет с ошибками", "применяет уверенно"],
         [5, "Говорение", "молчит", "отдельные слова", "простые фразы", "свободно для своего уровня"],
+        [8, "Аудирование", "не понимает на слух", "понимает отдельные слова", "понимает основное", "понимает почти всё", 1],
         [7, "Дисциплина", "мешал", "отвлекался", "нормально", "образцово"]],
     ph: [["Молодец!", "Barakalla!"], ["Старается на уроке.", "Darsda harakat qiladi."],
          ["Нужно повторять слова.", "Soʻzlarni takrorlash kerak."], ["Больше читать дома.", "Uyda koʻproq oʻqish kerak."]],
-    a: { "11": { "1": "322123" }, "12": { "0": "333232" }, "13": { "p": "211012" } },
-    c: { "0": [12] }
+    a: { "11": { "1": "32212x3" }, "12": { "0": "3332323" }, "13": { "p": "21101x2" } },
+    c: { "0": [12] }, sr: { "0": [12] }
   };
 
   var app = document.getElementById("app");
@@ -38,6 +39,19 @@
   function weekMonday() { return SB.addDays(monday(new Date()), -7 * weekIdx); }
   function draftKey() { return (SB.demoMode ? "demo-wk:" : "wk:") + data.gid + ":" + SB.iso(weekMonday()); }
   function saveDraft() { SB.draftSet(draftKey(), draft); }
+
+  // Черновик с телефона: берём только записи под нынешний список вопросов
+  // (после смены вопросов старый черновик иначе отправил бы испорченные ответы)
+  function loadDraft() {
+    var saved = SB.draftGet(draftKey()) || {}, out = {};
+    Object.keys(saved).forEach(function (sid) {
+      var e = saved[sid];
+      if (!e || !e.a || e.a.length !== data.q.length) return;
+      var ok = e.a.every(function (v) { return v === null || (typeof v === "number" && v >= 0 && v <= 3); });
+      if (ok) out[sid] = e;
+    });
+    return out;
+  }
 
   // Ответы из ссылки для ученика: сохранённые за выбранную неделю или последние до неё
   function fromLink(sid) {
@@ -65,10 +79,16 @@
         var ch = src.a.charAt(i);
         answers.push(ch >= "0" && ch <= "3" ? +ch : null);
       }
-      draft[sid] = { a: answers, c: "", done: false, prev: !!src.prev };
+      draft[sid] = { a: answers, c: "", done: false, prev: !!src.prev, s: isStar(sid) };
     }
     return draft[sid];
   }
+
+  function isStar(sid) {
+    var own = weekIdx - weekShift;
+    return ((data.sr && data.sr[String(own)]) || []).indexOf(sid) >= 0;
+  }
+  function optional(qi) { return !!data.q[qi][6]; }
 
   function status(sid) {
     if (draft[sid] && draft[sid].done) return "done";
@@ -125,7 +145,7 @@
       b.addEventListener("click", function () {
         if (weekIdx === idx) return;
         weekIdx = idx;
-        draft = SB.draftGet(draftKey()) || {};
+        draft = loadDraft();
         SB.haptic("select");
         renderList();
       });
@@ -185,34 +205,75 @@
     app.appendChild(head);
     if (e.prev && !e.done) app.appendChild(el("p", "hint", "↺ " + t("fromLastWeek")));
 
+    var LV = [t("lv0"), t("lv1"), t("lv2"), t("lv3")];
     data.q.forEach(function (q, qi) {
-      var block = el("div", "question");
+      var block = el("div", "qcard" + (e.a[qi] !== null || optional(qi) ? " answered" : ""));
       block.id = "q" + qi;
-      var h = el("h3");
+      var h = el("div", "qhead");
       h.appendChild(el("span", "num", String(qi + 1)));
-      h.appendChild(document.createTextNode(q[1]));
+      h.appendChild(el("b", "", q[1]));
+      if (optional(qi)) h.appendChild(el("span", "opt-tag", t("optional")));
       block.appendChild(h);
-      for (var v = 3; v >= 0; v--) {
+      var row = el("div", "levels" + (optional(qi) ? " with-skip" : ""));
+      var text = el("div", "answer-text");
+      var paint = function () {
+        var v = e.a[qi];
+        var buttons = row.querySelectorAll(".lv");
+        for (var j = 0; j < buttons.length; j++) {
+          var bv = buttons[j].getAttribute("data-v");
+          buttons[j].classList.toggle("sel", bv === "x" ? v === null && optional(qi) : +bv === v && v !== null);
+        }
+        text.textContent = v === null ? (optional(qi) ? "— " + t("notRated") : t("pickLevel")) : q[2 + v];
+        text.className = "answer-text" + (v === null ? " empty" : "");
+        block.classList.toggle("answered", v !== null || optional(qi));
+      };
+      for (var v = 0; v <= 3; v++) {
         (function (v) {
-          var b = el("button", "choice" + (e.a[qi] === v ? " selected" : ""));
+          var b = el("button", "lv l" + v);
           b.type = "button";
+          b.setAttribute("data-v", String(v));
           var bars = el("span", "bars v" + v);
           for (var k = 0; k < 4; k++) bars.appendChild(el("i"));
           b.appendChild(bars);
-          b.appendChild(el("span", "grow", q[2 + v]));
+          b.appendChild(el("small", "", LV[v]));
           b.addEventListener("click", function () {
             e.a[qi] = v;
             SB.haptic("select");
+            block.classList.remove("missing");
             saveDraft();
-            var siblings = block.querySelectorAll(".choice");
-            for (var j = 0; j < siblings.length; j++) siblings[j].classList.remove("selected", "missing");
-            b.classList.add("selected");
+            paint();
           });
-          block.appendChild(b);
+          row.appendChild(b);
         })(v);
       }
+      if (optional(qi)) {
+        var skip = el("button", "lv skip", "—");
+        skip.type = "button";
+        skip.setAttribute("data-v", "x");
+        skip.title = t("notRated");
+        skip.addEventListener("click", function () { e.a[qi] = null; SB.haptic("select"); saveDraft(); paint(); });
+        row.appendChild(skip);
+      }
+      block.appendChild(row);
+      block.appendChild(text);
+      paint();
       app.appendChild(block);
     });
+
+    var star = el("button", "star-toggle" + (e.s ? " on" : ""));
+    star.type = "button";
+    star.appendChild(el("span", "s", "⭐"));
+    var stx = el("span", "grow");
+    stx.appendChild(document.createTextNode(t("starWeek")));
+    stx.appendChild(el("small", "", t("starHint")));
+    star.appendChild(stx);
+    star.addEventListener("click", function () {
+      e.s = !e.s;
+      star.classList.toggle("on", e.s);
+      SB.haptic(e.s ? "success" : "select");
+      saveDraft();
+    });
+    app.appendChild(star);
 
     app.appendChild(el("h2", "", t("comment")));
     if (hasComment(sid)) app.appendChild(el("p", "hint", "💬 " + t("commentExists")));
@@ -268,13 +329,14 @@
   function finishStudent(index) {
     var e = entry(data.st[index][0]);
     var missing = -1;
-    for (var i = 0; i < e.a.length; i++) if (e.a[i] === null) { missing = i; break; }
+    for (var i = 0; i < e.a.length; i++) if (e.a[i] === null && !optional(i)) { missing = i; break; }
     if (missing >= 0) {
       SB.haptic("error");
       SB.toast(t("answerAll"), true);
       var block = document.getElementById("q" + missing);
-      var opts = block.querySelectorAll(".choice");
-      for (var j = 0; j < opts.length; j++) opts[j].classList.add("missing");
+      block.classList.remove("missing");
+      void block.offsetWidth;            // перезапуск анимации «потрясти»
+      block.classList.add("missing");
       block.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
@@ -292,6 +354,7 @@
     }
     renderList();
     SB.toast(t("allDone"));
+    if (SB.confetti) SB.confetti();
   }
 
   // ---------------------------------------------------------------- отправка
@@ -300,7 +363,11 @@
     return {
       v: 1, u: SB.uuid(), t: "wk", g: data.gid, w: SB.iso(weekMonday()),
       q: data.q.map(function (q) { return q[0]; }),
-      r: ids.map(function (sid) { var e = draft[sid]; return [sid, e.a.join(""), e.c || ""]; })
+      // ответы: 0–3, «-» — необязательный вопрос не оценивался; последний элемент — звезда недели
+      r: ids.map(function (sid) {
+        var e = draft[sid];
+        return [sid, e.a.map(function (v) { return v === null ? "-" : String(v); }).join(""), e.c || "", e.s ? 1 : 0];
+      })
     };
   }
 
@@ -326,15 +393,17 @@
   }
 
   // Запуск формы: отдельной страницей (forms/*.html) или внутри приложения группы (app/)
-  function start(d, demo) {
+  // opts.sid — сразу открыть этого ученика (из профиля в приложении группы)
+  function start(d, demo, opts) {
     weekIdx = 0;
     screen = -1;
     data = d;
     SB.demoMode = demo;
     var built = SB.parseISO(data.wk || SB.iso(monday(new Date())));
     weekShift = Math.round((monday(new Date()) - built) / (7 * 86400000));
-    draft = SB.draftGet(draftKey()) || {};
-    renderList();
+    draft = loadDraft();
+    var idx = opts && opts.sid ? data.st.map(function (s) { return s[0]; }).indexOf(opts.sid) : -1;
+    if (idx >= 0) renderStudent(idx); else renderList();
   }
 
   SB.forms = SB.forms || {};

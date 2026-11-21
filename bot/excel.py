@@ -37,6 +37,10 @@ def build_template(con) -> bytes:
     head_fill = PatternFill("solid", fgColor="DDE7F3")
     subjects = repo.list_subjects(con)
     stages = repo.list_stages(con, "en")
+    math = repo.list_stages(con, "math")
+    all_names = [s["name_ru"] for s in stages] + [s["name_ru"] for s in math]
+    while len(",".join(all_names)) > 250:  # ограничение Excel на список в ячейке
+        all_names.pop()
 
     def sheet(ws, columns, widths):
         ws.append(columns)
@@ -60,13 +64,13 @@ def build_template(con) -> bytes:
     ws = wb.create_sheet(SHEET_G)
     sheet(ws, G_COLS, [14, 16, 22, 14, 14, 16, 12])
     dropdown(ws, "B", [s["name_ru"] for s in subjects])
-    dropdown(ws, "D", [s["name_ru"] for s in stages])
+    dropdown(ws, "D", all_names)
 
     ws = wb.create_sheet(SHEET_S)
     sheet(ws, S_COLS, [30, 14, 22, 26, 24])
     dropdown(ws, "C", ["ru", "uz"])
     dropdown(ws, "D", ["да", "нет"])
-    dropdown(ws, "E", [s["name_ru"] for s in stages])
+    dropdown(ws, "E", all_names)
 
     ws = wb.create_sheet(SHEET_HELP)
     ws.column_dimensions["A"].width = 30
@@ -75,7 +79,8 @@ def build_template(con) -> bytes:
         ("Как заполнять", ""),
         ("Учителя", "Telegram ID — цифры (учитель узнаёт его командой /myid в боте). Язык: ru или uz."),
         ("Группы", "Название — как в центре (10-А). Учитель — его Telegram ID из листа «Учителя» "
-                   "или уже добавленный в бот. Этап — только для английского."),
+                   "или уже добавленный в бот. Этап — для английского обязательно, для математики — "
+                   "класс (например 5 класс), можно оставить пустым."),
         ("", "Дата старта: 01.09.2026. Дни недели: Пн, Ср, Пт. Время урока: 15:00."),
         ("Ученики", "Имя и фамилия — в таком порядке (Азиз Каримов). Группа — название группы."),
         ("", "Согласие родителя: да/нет (письменное согласие центр собирает сам на бумаге). "
@@ -85,6 +90,7 @@ def build_template(con) -> bytes:
         ("", ""),
         ("Предметы", ", ".join(s["name_ru"] for s in subjects)),
         ("Этапы английского", ", ".join(s["name_ru"] for s in stages)),
+        ("Этапы математики", ", ".join(s["name_ru"] for s in math)),
         ("", ""),
         ("Пример (выдуманный)", "Группы: 10-А | Английский | 123456789 | Курс A1 | 01.09.2026 | Пн, Ср, Пт | 15:00"),
         ("", "Ученики: Азиз Каримов | 10-А | uz | да |"),
@@ -223,10 +229,11 @@ def parse(con, data: bytes) -> Plan:
         if s["has_map"]:
             match = [st for st in repo.list_stages(con, s["code"])
                      if _key(_text(stage)) in (_key(st["code"]), _key(st["name_ru"]), _key(st["name_uz"]))]
-            if not _text(stage) or not match:
-                err(SHEET_G, row, "укажите этап из списка (например Курс A1)")
+            if (_text(stage) and not match) or (not _text(stage) and s["code"] == "en"):
+                err(SHEET_G, row, "укажите этап из списка (например Курс A1)"
+                    if s["code"] == "en" else f"неизвестный этап «{_text(stage)}» (пример: 5 класс)")
                 continue
-            stage_id = match[0]["id"]
+            stage_id = match[0]["id"] if match else None
         elif _text(stage):
             err(SHEET_G, row, f"у предмета «{s['name_ru']}» нет этапов — оставьте ячейку «Этап» пустой")
             continue

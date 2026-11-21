@@ -14,6 +14,16 @@ WIZARD_ACTS = {"t_add_lang", "t_add_back", "g_add_subj", "g_add_teacher", "g_add
                "g_add_back", "s_add_lang", "s_add_consent", "s_add_back", "xl_apply"}
 
 
+# Кнопки под полем ввода, которые всегда означают «перейти», а не «ответ на вопрос бота»
+NAV_TEXTS = {"☰ Меню владельца", "🔄 Обновить", "🔄 Yangilash", "🔁 Другая группа", "🔁 Boshqa guruh"}
+
+
+async def reset_input_on_keyboard(handler, event, data):
+    if (event.text or "") in NAV_TEXTS and data.get("state") is not None:
+        await data["state"].clear()
+    return await handler(event, data)
+
+
 async def reset_input_on_navigation(handler, event, data):
     parts = (event.data or "").split(":")
     if len(parts) > 1 and parts[0] == "a" and parts[1] not in WIZARD_ACTS and data.get("state") is not None:
@@ -27,6 +37,7 @@ def build_dispatcher(conf, con) -> Dispatcher:
     dp.message.outer_middleware(access)
     dp.callback_query.outer_middleware(access)
     dp.callback_query.outer_middleware(reset_input_on_navigation)
+    dp.message.outer_middleware(reset_input_on_keyboard)
     routers = [common.router, admin.router, admin_excel.router, admin_more.router, stations.router,
                teacher.router, fallback.router]
     for router in routers:

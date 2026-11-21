@@ -302,7 +302,10 @@
       examRestart: "Экзамены новой станции — каждые 2 месяца с сегодняшнего дня.",
       cardsText: "Бот пришлёт в чат по картинке на каждого ученика, у которого есть отчёт за эту неделю и отметка о согласии родителя. Перешлите каждую карточку родителю.",
       cardsReady: "Готово к отправке", cardsNoReport: "Нет отчёта за неделю", cardsNoConsent: "Нет согласия родителя",
-      sendCards: "Прислать карточки · {n}", noExam: "у этого предмета нет экзаменов"
+      sendCards: "Прислать карточки · {n}", noExam: "у этого предмета нет экзаменов",
+      lv0: "слабо", lv1: "так себе", lv2: "хорошо", lv3: "отлично", optional: "можно пропустить",
+      notRated: "не оценивалось на этой неделе", pickLevel: "Выберите уровень",
+      starWeek: "Звезда недели", starHint: "На карточке родителю появится значок ⭐"
     },
     uz: {
       save: "Saqlash", saveN: "Saqlash · {n}", next: "Keyingisi", toList: "Roʻyxatga",
@@ -346,7 +349,10 @@
       examRestart: "Yangi bosqich imtihonlari — bugundan boshlab har 2 oyda.",
       cardsText: "Bot shu hafta hisoboti va ota-ona roziligi bor har bir oʻquvchi uchun chatga rasm yuboradi. Har bir kartani ota-onaga yuboring.",
       cardsReady: "Yuborishga tayyor", cardsNoReport: "Hafta hisoboti yoʻq", cardsNoConsent: "Ota-ona roziligi yoʻq",
-      sendCards: "Kartalarni yuborish · {n}", noExam: "bu fanda imtihon yoʻq"
+      sendCards: "Kartalarni yuborish · {n}", noExam: "bu fanda imtihon yoʻq",
+      lv0: "sust", lv1: "oʻrtacha", lv2: "yaxshi", lv3: "aʼlo", optional: "oʻtkazish mumkin",
+      notRated: "bu hafta baholanmagan", pickLevel: "Darajani tanlang",
+      starWeek: "Hafta yulduzi", starHint: "Ota-ona kartasida ⭐ belgisi paydo boʻladi"
     }
   };
   var lang = "ru";
@@ -527,7 +533,144 @@
     return monday.getDate() + "–" + sat.getDate() + " " + MON[lang][sat.getMonth()];
   }
 
+  // Дополнительные тексты (приложение группы, панель центра) — в своих файлах
+  function addTexts(more) {
+    Object.keys(more).forEach(function (l) {
+      I18N[l] = I18N[l] || {};
+      Object.keys(more[l]).forEach(function (k) { I18N[l][k] = more[l][k]; });
+    });
+  }
+
+  var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function svg(tag, attrs) {
+    var e = document.createElementNS(SVGNS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    return e;
+  }
+
+  // Кольцо прогресса: pct 0–100; число в центре задаёт вызывающий
+  function ring(pct, size, stroke, cls) {
+    size = size || 64; stroke = stroke || 8;
+    var r = (size - stroke) / 2, c = 2 * Math.PI * r;
+    var box = el("span", "ring " + (cls || ""));
+    box.style.width = box.style.height = size + "px";
+    var s = svg("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size });
+    s.appendChild(svg("circle", { cx: size / 2, cy: size / 2, r: r, "class": "ring-bg", "stroke-width": stroke, fill: "none" }));
+    var fg = svg("circle", { cx: size / 2, cy: size / 2, r: r, "class": "ring-fg", "stroke-width": stroke, fill: "none",
+                             "stroke-linecap": "round", "stroke-dasharray": c, "stroke-dashoffset": c,
+                             transform: "rotate(-90 " + size / 2 + " " + size / 2 + ")" });
+    s.appendChild(fg);
+    box.appendChild(s);
+    var target = c * (1 - Math.max(0, Math.min(100, pct)) / 100);
+    if (reduced) fg.setAttribute("stroke-dashoffset", target);
+    else requestAnimationFrame(function () { requestAnimationFrame(function () { fg.style.strokeDashoffset = target; }); });
+    return box;
+  }
+
+  // Мини-график уровня по неделям: строка «--3456-7» (0–9 или «-» — нет отчёта)
+  function sparkline(hist, w, h) {
+    w = w || 84; h = h || 28;
+    var s = svg("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h, "class": "spark" });
+    var n = hist.length, pts = [];
+    for (var i = 0; i < n; i++) {
+      var ch = hist.charAt(i);
+      if (ch >= "0" && ch <= "9") pts.push([n > 1 ? 4 + i * (w - 8) / (n - 1) : w / 2, h - 4 - (+ch / 9) * (h - 8)]);
+    }
+    if (pts.length > 1) {
+      s.appendChild(svg("polyline", { points: pts.map(function (p) { return p.join(","); }).join(" "),
+                                      fill: "none", "class": "spark-line", "stroke-width": 3,
+                                      "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    }
+    pts.forEach(function (p, k) {
+      s.appendChild(svg("circle", { cx: p[0], cy: p[1], r: k === pts.length - 1 ? 3.6 : 2.2, "class": "spark-dot" }));
+    });
+    return s;
+  }
+
+  // Число, которое «набегает» от 0
+  function countUp(node, to, suffix) {
+    suffix = suffix || "";
+    if (reduced || !to) { node.textContent = to + suffix; return; }
+    var start = null, dur = 700;
+    var step = function (ts) {
+      if (start === null) start = ts;
+      var k = Math.min(1, (ts - start) / dur);
+      node.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))) + suffix;
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // Конфетти на весь экран (праздник: все отчёты заполнены)
+  function confetti() {
+    if (reduced) return;
+    var cv = document.createElement("canvas");
+    cv.className = "confetti";
+    var W = cv.width = window.innerWidth, H = cv.height = window.innerHeight;
+    document.body.appendChild(cv);
+    var ctx = cv.getContext("2d");
+    var colors = ["#ff9a3c", "#ffc23d", "#4dba6a", "#5ab4f0", "#ff7a6b", "#b37cf0"];
+    var parts = [];
+    for (var i = 0; i < 140; i++) {
+      parts.push({ x: W / 2 + (Math.random() - 0.5) * 80, y: H * 0.35, vx: (Math.random() - 0.5) * 14,
+                   vy: -Math.random() * 14 - 4, s: 5 + Math.random() * 6, r: Math.random() * 6,
+                   vr: (Math.random() - 0.5) * 0.4, c: colors[i % colors.length] });
+    }
+    var t0 = null;
+    var frame = function (ts) {
+      if (t0 === null) t0 = ts;
+      ctx.clearRect(0, 0, W, H);
+      parts.forEach(function (p) {
+        p.vy += 0.42; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+        ctx.fillRect(-p.s / 2, -p.s / 3, p.s, p.s * 0.66); ctx.restore();
+      });
+      if (ts - t0 < 2200) requestAnimationFrame(frame); else cv.remove();
+    };
+    requestAnimationFrame(frame);
+  }
+
+  // Маскот «Апельсинка»: настроение happy / calm / worried / party
+  function mascot(mood, size) {
+    size = size || 72;
+    var box = el("span", "mascot mood-" + (mood || "calm"));
+    box.style.width = box.style.height = size + "px";
+    var s = svg("svg", { viewBox: "0 0 100 100", width: size, height: size });
+    s.appendChild(svg("ellipse", { cx: 50, cy: 94, rx: 26, ry: 4, "class": "m-shadow" }));
+    var body = svg("g", { "class": "m-body" });
+    body.appendChild(svg("path", { d: "M50 14 C 56 4, 70 4, 72 10 C 64 12, 58 14, 52 20 Z", "class": "m-leaf" }));
+    body.appendChild(svg("circle", { cx: 50, cy: 54, r: 36, "class": "m-skin" }));
+    body.appendChild(svg("circle", { cx: 50, cy: 54, r: 36, "class": "m-shine" }));
+    body.appendChild(svg("ellipse", { cx: 28, cy: 64, rx: 6, ry: 4, "class": "m-cheek" }));
+    body.appendChild(svg("ellipse", { cx: 72, cy: 64, rx: 6, ry: 4, "class": "m-cheek" }));
+    var eyes = svg("g", { "class": "m-eyes" });
+    [36, 64].forEach(function (x) {
+      eyes.appendChild(svg("ellipse", { cx: x, cy: 50, rx: 8, ry: 9, "class": "m-eye" }));
+      eyes.appendChild(svg("circle", { cx: x + 1.5, cy: 52, r: 4.2, "class": "m-pupil" }));
+    });
+    body.appendChild(eyes);
+    var mouth = { happy: "M38 66 Q50 80 62 66", party: "M36 64 Q50 84 64 64 Z", calm: "M40 68 Q50 75 60 68",
+                  worried: "M40 72 Q50 64 60 72" }[mood] || "M40 68 Q50 75 60 68";
+    body.appendChild(svg("path", { d: mouth, "class": "m-mouth" + (mood === "party" ? " open" : "") }));
+    s.appendChild(body);
+    box.appendChild(s);
+    return box;
+  }
+
+  // Склонение: plural(5, ["ученик", "ученика", "учеников"])
+  function plural(n, forms) {
+    if (lang === "uz") return forms[0];
+    var a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return forms[2];
+    if (b === 1) return forms[0];
+    if (b >= 2 && b <= 4) return forms[1];
+    return forms[2];
+  }
+
   var ui = {
+    addTexts: addTexts, ring: ring, sparkline: sparkline, countUp: countUp, confetti: confetti, mascot: mascot,
+    plural: plural, reduced: reduced, svg: svg,
     tgo: tgo, inTg: inTg, t: t, setLang: setLang, lang: function () { return lang; },
     haptic: haptic, setSave: setSave, setBack: setBack, send: send, confirm: confirmBox, toast: toast,
     draftGet: draftGet, draftSet: draftSet, draftClear: draftClear,

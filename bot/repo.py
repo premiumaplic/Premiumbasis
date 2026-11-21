@@ -29,6 +29,11 @@ def get_int(con, key: str, default: int) -> int:
         return default
 
 
+def attendance_on(con) -> bool:
+    """Посещаемость включена? По умолчанию нет: в центре её ведут на другом сайте."""
+    return get_setting(con, "attendance_on", "0") == "1"
+
+
 def all_settings(con) -> dict[str, str]:
     return {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings ORDER BY key")}
 

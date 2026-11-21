@@ -13,7 +13,9 @@ WEEKS = [dt.date(2026, 10, 26), dt.date(2026, 11, 2), dt.date(2026, 11, 9), dt.d
 ON = dt.date(2026, 11, 20)
 
 
-def setup(con, lang="ru", name="Мухаммадали Каримов", comment="", subject="en"):
+def setup(con, lang="ru", name="Мухаммадали Каримов", comment="", subject="en", attendance=True):
+    if attendance:
+        repo.set_setting(con, ACTOR, "attendance_on", "1")
     tid = make_teacher(con)
     gid = make_group(con, teacher_id=tid, subject=subject, stage="a1" if subject == "en" else None,
                      start=dt.date(2026, 10, 15))
@@ -71,8 +73,48 @@ def test_render_fast_and_fits(con):
 def test_card_without_map(con):
     sid, gid = setup(con, subject="math")
     data = card.collect(con, sid, gid, WEEKS[-1], ON)
-    assert data.view is None and data.week_line.startswith("неделя") and len(data.metrics) == 4
+    assert data.view is None and data.week_line.startswith("неделя") and len(data.metrics) == 6
     card.render(data)
+
+
+def test_attendance_off_and_star(con):
+    sid, gid = setup(con, attendance=False)
+    q = [x["id"] for x in reports.questions_for(con, "en")]
+    reports.save_weekly(con, 1, gid, WEEKS[-1], sid, dict(zip(q, [3, 2, 3, 1, 3, 2, 3, 2, 2])), "", True)
+    data = card.collect(con, sid, gid, WEEKS[-1], ON)
+    assert not data.show_attendance and data.att_total == 0 and data.star
+    assert not data.summary.startswith("Посещаемость") and len(data.metrics) == 9
+    assert data.about == "Общение на простые темы" and data.exam_days == 25
+    card.render(data)
+    assert card.render.last_height <= card.H - 16
+
+
+def test_math_card_has_map(con):
+    sid, gid = setup(con, subject="math")
+    repo.move_group_station(con, ACTOR, gid, repo.stage_by_code(con, "math", "g5")["id"], dt.date(2026, 9, 1))
+    data = card.collect(con, sid, gid, WEEKS[-1], ON)
+    assert data.stage_name == "5 класс" and data.finish_line == "Переход — по решению учителя"
+    items = card._route_items(data)
+    assert [i["label"] for i in items][:2] == ["5 класс", "6 класс"] and len(items) == 7
+    card.render(data)
+    assert card.render.last_height <= card.H - 16
+
+
+def test_long_route_window(con):
+    sid, gid = setup(con, subject="math")
+    repo.move_group_station(con, ACTOR, gid, repo.stage_by_code(con, "math", "g1")["id"], dt.date(2026, 9, 1))
+    for code in ("g2", "g3", "g4"):
+        repo.move_station(con, ACTOR, sid, repo.stage_by_code(con, "math", code)["id"], dt.date(2026, 10, 1))
+    items = card._route_items(card.collect(con, sid, gid, WEEKS[-1], ON))
+    assert len(items) == 10 and items[0]["label"] == "2 класс" and items[-1]["label"] == "11 класс"
+    assert not items[-1]["gap"] and items[2]["state"] == "current"   # окно: 2 пройденные + остальные
+
+
+def test_long_route_gap(con):
+    sid, gid = setup(con, subject="math")
+    repo.move_group_station(con, ACTOR, gid, repo.stage_by_code(con, "math", "g1")["id"], dt.date(2026, 9, 1))
+    items = card._route_items(card.collect(con, sid, gid, WEEKS[-1], ON))
+    assert len(items) == 10 and items[-1]["gap"] and items[-1]["label"] == "11 класс" and items[-2]["label"] == "9 класс"
 
 
 def test_card_has_only_this_student(con):
