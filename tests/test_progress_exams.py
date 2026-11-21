@@ -175,3 +175,12 @@ def test_teacher_moves_student_back(con):
     statuses = [r["status"] for r in con.execute("SELECT status FROM student_stage WHERE student_id = ? ORDER BY id",
                                                  (sid,))]
     assert statuses == ["left", "current"]       # назад: прежняя станция «оставлена», не «пройдена»
+
+
+def test_group_does_not_advance_on_partial_scores(con):
+    teacher, g, sid = student_in(con)
+    others = [repo.add_student(con, ACTOR, f"Ученик{i} Тестов", "ru", True, g["id"], START) for i in range(3)]
+    res = exam(con, teacher, g, [[sid, 90, 1, "", ""]])            # введён балл только одного из четырёх
+    assert "Группа переходит" not in res.text and repo.group(con, g["id"])["stage_code"] == "a1"
+    res = exam(con, teacher, g, [[others[0], 80, 1, "", ""]])       # теперь сдали двое из четырёх
+    assert "Группа переходит на станцию Курс A2" in res.text

@@ -22,8 +22,8 @@ TEXTS = {
         "uz": "Assalomu alaykum, {name}! Sizda hozircha guruh yoʻq. Markaz egasiga murojaat qiling.",
     },
     "group_chosen": {
-        "ru": "{header}\n\nКнопки форм — внизу, под полем ввода.",
-        "uz": "{header}\n\nShakl tugmalari — pastda, yozish maydoni ostida.",
+        "ru": "{header}\n\nОткройте журнал группы кнопкой внизу, под полем ввода.",
+        "uz": "{header}\n\nGuruh jurnalini pastdagi tugma bilan oching.",
     },
     "btn_attendance": {"ru": "✅ Посещаемость", "uz": "✅ Davomat"},
     "btn_weekly": {"ru": "📝 Недельный отчёт", "uz": "📝 Haftalik hisobot"},
@@ -158,6 +158,18 @@ TEXTS = {
                               "uz": "Tayyor: {name} endi {new} bosqichida."},
     "stations_none": {"ru": "У предмета этой группы нет карты станций.",
                       "uz": "Bu guruh fani uchun bosqichlar xaritasi yoʻq."},
+    "btn_refresh": {"ru": "🔄 Обновить", "uz": "🔄 Yangilash"},
+    "hub_placeholder": {"ru": "Откройте журнал группы кнопкой ниже", "uz": "Guruh jurnalini pastdagi tugma bilan oching"},
+    "hub_hello": {
+        "ru": "Здравствуйте, {name}! Нажмите кнопку с группой внизу — откроется журнал группы: "
+              "посещаемость, недельный отчёт, экзамен, тема, станции, подсказки и карточки для родителей.\n\n"
+              "Если кнопок не видно — нажмите значок клавиатуры справа в строке ввода.",
+        "uz": "Assalomu alaykum, {name}! Pastdagi guruh tugmasini bosing — guruh jurnali ochiladi: "
+              "davomat, haftalik hisobot, imtihon, mavzu, bosqichlar, maslahatlar va ota-onalar uchun kartalar.\n\n"
+              "Tugmalar koʻrinmasa — yozish maydonining oʻngidagi klaviatura belgisini bosing.",
+    },
+    "hub_refreshed": {"ru": "Кнопки обновлены.", "uz": "Tugmalar yangilandi."},
+    "hints_closed_n": {"ru": "Закрыто подсказок: {n}.", "uz": "Yopilgan maslahatlar: {n}."},
     "reminder": {
         "ru": "⏰ Напоминание: нет недельного отчёта за неделю {week}.",
         "uz": "⏰ Eslatma: {week} haftasi uchun haftalik hisobot yoʻq.",

@@ -79,9 +79,16 @@
     SB.send(payload);
   }
 
-  SB.load(DEMO, function (d, demo) {
+  // Запуск формы: отдельной страницей (forms/*.html) или внутри приложения группы (app/)
+  function start(d, demo) {
+    unit = null;
+    render.text = "";
     data = d;
     SB.demoMode = demo;
     render();
-  });
+  }
+
+  SB.forms = SB.forms || {};
+  SB.forms.topic = { start: start, demo: DEMO };
+  if (!window.SB_HUB) SB.load(DEMO, start);
 })();

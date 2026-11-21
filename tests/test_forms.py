@@ -200,3 +200,20 @@ def test_uzbek_teacher_gets_uzbek_texts(con):
     assert payload["q"][0][1] == "Uy vazifasi"
     res = send(con, teacher, {"t": "att", "g": g["id"], "d": "2026-11-20", "m": [[sids[0], 0]]})
     assert res.text.startswith("Saqlandi")
+
+
+def test_hub_payload_fits_and_is_minimal(con):
+    from bot import hub
+    from bot.payload import decode_param
+    teacher, g, sids = setup(con, 20)
+    send(con, teacher, {"t": "wk", "g": g["id"], "w": "2026-11-16", "q": qids(con, g),
+                        "r": [[s, "321023", "Комментарий"] for s in sids]})
+
+    class Conf:
+        forms_url = "https://premiumaplic.github.io/Premiumbasis/"
+    link = hub.url(con, Conf, g, "ru", TODAY)
+    assert link and len(link) < 3000, len(link)
+    data = decode_param(link.split("#d=")[1])
+    assert len(data["st"]) == 20 and data["st"][0][1] == "Азиз К."
+    assert "Каримов" not in json.dumps(data, ensure_ascii=False)
+    assert data["ex"]["sn"] == "Курс A1" and data["stg"][0][1] == "Starter"

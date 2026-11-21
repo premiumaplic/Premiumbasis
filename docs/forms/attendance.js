@@ -119,7 +119,9 @@
     SB.send(payload);
   }
 
-  SB.load(DEMO, function (d, demo) {
+  // Запуск формы: отдельной страницей (forms/*.html) или внутри приложения группы (app/)
+  function start(d, demo) {
+    selectedBack = 0;
     data = d;
     SB.demoMode = demo;
     today = SB.parseISO(SB.localDate());
@@ -127,5 +129,9 @@
     shift = Math.round((today - built) / 86400000);
     marks = marksFor(0);
     render();
-  });
+  }
+
+  SB.forms = SB.forms || {};
+  SB.forms.attendance = { start: start, demo: DEMO };
+  if (!window.SB_HUB) SB.load(DEMO, start);
 })();

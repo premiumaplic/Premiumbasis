@@ -86,3 +86,13 @@ def maybe_advance_group(con, group, stage, passed: int, total: int, on: date | N
     con.execute("UPDATE groups SET stage_id = ?, stage_start = ? WHERE id = ?",
                 (nxt["id"], (on or date.today()).isoformat(), group["id"]))
     return nxt
+
+
+def passed_today(con, group_id: int, stage_id: int, on: date) -> int:
+    """Сколько учеников группы сегодня перешли с этой станции (по всем отправкам формы за день)."""
+    return con.execute(
+        "SELECT count(DISTINCT n.student_id) FROM student_stage n "
+        "JOIN enrollments e ON e.student_id = n.student_id AND e.group_id = ? AND e.date_to IS NULL "
+        "WHERE n.status = 'current' AND n.date_from = ? AND EXISTS ("
+        "  SELECT 1 FROM student_stage p WHERE p.student_id = n.student_id AND p.stage_id = ? AND p.status = 'done')",
+        (group_id, on.isoformat(), stage_id)).fetchone()[0]

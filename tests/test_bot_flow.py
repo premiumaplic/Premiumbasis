@@ -85,21 +85,25 @@ def test_settings_validation(chat, con):
 
 
 def test_teacher_sees_only_own_groups(chat, con):
+    from bot.payload import decode_param
     tid = make_teacher(con, TEACHER_TG)
     other = make_teacher(con, 600002, "Другой Учитель")
     mine = make_group(con, "10-А", teacher_id=tid)
     foreign = make_group(con, "11-Б", teacher_id=other)
     calls = run(chat.send(TEACHER_TG, "/start"))
-    assert list(buttons(calls)) == ["10-А · Английский"]
+    reply = calls[-1]
+    assert "Нажмите кнопку с группой внизу" in reply.text
+    keyboard = [b for row in reply.reply_markup.keyboard for b in row]
+    apps = [b for b in keyboard if b.web_app]
+    assert [b.text for b in apps] == ["📱 10-А · Английский"]                 # только своя группа
+    assert apps[0].web_app.url.startswith("https://example.github.io/Repo/app/#d=")
+    data = decode_param(apps[0].web_app.url.split("#d=")[1])
+    assert data["gid"] == mine and data["hdr"].startswith("Курс A1")
+    assert "🔄 Обновить" in [b.text for b in keyboard]
+    # старая кнопка выбора группы тоже ведёт в приложение, а чужую группу не открыть
     calls = run(chat.press(TEACHER_TG, f"t:group:{mine}"))
     assert "Группа 10-А · Курс A1" in last_text(calls)
-    keyboard = [b for row in calls[-1].reply_markup.keyboard for b in row]
-    web = {b.text: b.web_app.url for b in keyboard if b.web_app}
-    assert set(web) == {"✅ Посещаемость", "📝 Недельный отчёт", "🎓 Экзамен", "📚 Тема"}
-    assert "📤 Карточки для родителей" in [b.text for b in keyboard]
-    assert web["✅ Посещаемость"].startswith("https://example.github.io/Repo/forms/attendance.html#d=")
     assert repo.teacher(con, tid)["current_group_id"] == mine
-    # подделанная кнопка чужой группы
     calls = run(chat.press(TEACHER_TG, f"t:group:{foreign}"))
     assert any(type(c).__name__ == "AnswerCallbackQuery" and c.show_alert for c in calls)
     # учитель не может пользоваться меню владельца
@@ -362,3 +366,45 @@ def test_every_owner_prompt_has_back(chat, con):
                  f"a:s_add:{gid}:0", "a:g_add:0:0"):
         calls = run(chat.press(OWNER, data))
         assert "⬅️ Назад" in buttons(calls), data
+
+
+def _form(chat, user, data):
+    import json
+    import uuid
+    from aiogram.types import Update
+    data = {"v": 1, "u": str(uuid.uuid4()), **data}
+    chat.n += 1
+    msg = chat._msg(user, web_app_data={"data": json.dumps(data, ensure_ascii=False), "button_text": "📱"})
+    start = len(chat.session.calls)
+    run(chat.dp.feed_update(chat.bot, Update(update_id=chat.n + 1000, message=msg)))
+    return chat.session.calls[start:]
+
+
+def test_app_actions_hints_move_cards(chat, con):
+    import datetime as dt
+    from bot import hints as hints_mod, reports, schedule
+    tid = make_teacher(con, TEACHER_TG)
+    gid = make_group(con, "Kids-1", teacher_id=tid, stage="roundup3")
+    today = schedule.today()
+    sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, today)
+    for back in (2, 1):
+        reports.save_attendance(con, 1, gid, today - dt.timedelta(days=back), [(sid, "absent")])
+    hints_mod.evaluate_group(con, gid, today)
+    hint_id = hints_mod.open_hints(con, gid)[0]["id"]
+    # закрыть подсказку из приложения
+    calls = _form(chat, TEACHER_TG, {"t": "hints", "g": gid, "close": [hint_id]})
+    assert "Закрыто подсказок: 1" in last_text(calls)
+    # перевести группу сразу в A1 — владелец получает сообщение
+    a1 = repo.stage_by_code(con, "en", "a1")["id"]
+    calls = _form(chat, TEACHER_TG, {"t": "move", "g": gid, "sid": 0, "s": a1})
+    assert any("теперь на станции Курс A1" in (getattr(c, "text", "") or "") for c in calls)
+    assert any(getattr(c, "chat_id", None) == OWNER and "перевёл группу" in c.text for c in calls
+               if type(c).__name__ == "SendMessage")
+    assert repo.current_stage(con, sid, "en")["code"] == "a1"
+    # чужая станция (другого предмета) или чужой ученик — отказ
+    math_stage = 999
+    assert "Форма не сохранена" in last_text(_form(chat, TEACHER_TG, {"t": "move", "g": gid, "sid": sid, "s": math_stage}))
+    # карточки из приложения
+    reports.save_weekly(con, TEACHER_TG, gid, reports.week_start(today), sid, {1: 3}, "")
+    calls = _form(chat, TEACHER_TG, {"t": "cards", "g": gid})
+    assert len([c for c in calls if type(c).__name__ == "SendPhoto"]) == 1

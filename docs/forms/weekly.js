@@ -325,12 +325,19 @@
     SB.confirm(t("tooBig", { k: fit, n: ids.length }), function (ok) { if (ok) go(fit); });
   }
 
-  SB.load(DEMO, function (d, demo) {
+  // Запуск формы: отдельной страницей (forms/*.html) или внутри приложения группы (app/)
+  function start(d, demo) {
+    weekIdx = 0;
+    screen = -1;
     data = d;
     SB.demoMode = demo;
     var built = SB.parseISO(data.wk || SB.iso(monday(new Date())));
     weekShift = Math.round((monday(new Date()) - built) / (7 * 86400000));
     draft = SB.draftGet(draftKey()) || {};
     renderList();
-  });
+  }
+
+  SB.forms = SB.forms || {};
+  SB.forms.weekly = { start: start, demo: DEMO };
+  if (!window.SB_HUB) SB.load(DEMO, start);
 })();

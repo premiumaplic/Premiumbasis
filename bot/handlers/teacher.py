@@ -8,13 +8,13 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
-from bot import card, forms, hints, repo, reports, schedule
+from bot import card, forms, hints, hub, repo, reports, schedule
 from bot.config import data_dir
 from bot.access import TeacherOnly
 from bot.handlers.common import show
@@ -35,26 +35,44 @@ def groups_markup(con, teacher) -> object:
     return kb(*column(buttons, 2)) if buttons else None
 
 
-async def send_groups(target, con, teacher) -> None:
-    markup = groups_markup(con, teacher)
-    key = "hello_teacher" if markup else "no_groups"
-    await show(target, t(key, teacher["lang"], name=teacher["name"]), markup)
+async def send_groups(target, con, conf, teacher) -> None:
+    """Приветствие и кнопки под полем ввода: по кнопке-приложению на каждую группу."""
+    lang = teacher["lang"]
+    markup = hub.teacher_keyboard(con, conf, teacher)
+    message = target.message if isinstance(target, CallbackQuery) else target
+    if isinstance(target, CallbackQuery):
+        await target.answer()
+    if markup is None:
+        return await message.answer(t("no_groups", lang, name=teacher["name"]))
+    await message.answer(t("hub_hello", lang, name=teacher["name"]), reply_markup=markup)
 
 
 @router.message(CommandStart())
-async def start(message: Message, state: FSMContext, con, teacher) -> None:
+async def start(message: Message, state: FSMContext, con, conf, teacher) -> None:
     await state.clear()
-    await send_groups(message, con, teacher)
+    await send_groups(message, con, conf, teacher)
 
 
-@router.message(F.text.in_(all_variants("btn_other_group")))
-async def other_group(message: Message, con, teacher) -> None:
-    await send_groups(message, con, teacher)
+@router.message(F.text.in_(all_variants("btn_other_group") | all_variants("btn_refresh")))
+async def refresh(message: Message, con, conf, teacher) -> None:
+    await send_groups(message, con, conf, teacher)
 
 
 @router.callback_query(T.filter(F.act == "groups"))
-async def groups_button(cb: CallbackQuery, con, teacher) -> None:
-    await send_groups(cb, con, teacher)
+async def groups_button(cb: CallbackQuery, con, conf, teacher) -> None:
+    await send_groups(cb, con, conf, teacher)
+
+
+@router.message(F.text.startswith("📂 "))
+async def legacy_group(message: Message, con, conf, teacher) -> None:
+    """Группа слишком большая для приложения в одной ссылке — формы отдельными кнопками."""
+    name = message.text[2:].strip()
+    g = next((x for x in repo.list_groups(con, teacher_id=teacher["id"]) if x["name"] == name), None)
+    if not g:
+        return await message.answer(t("not_your_group", teacher["lang"]))
+    reports.set_current_group(con, teacher["id"], g["id"])
+    await message.answer(t("group_chosen", teacher["lang"], header=schedule.group_header(g, teacher["lang"])),
+                         reply_markup=forms.group_keyboard(con, conf, g, teacher["lang"]))
 
 
 @router.callback_query(T.filter(F.act == "group"))
@@ -67,21 +85,25 @@ async def choose_group(cb: CallbackQuery, callback_data: T, con, conf, teacher) 
     reports.set_current_group(con, teacher["id"], g["id"])
     await cb.answer()
     await cb.message.answer(t("group_chosen", lang, header=schedule.group_header(g, lang)),
-                            reply_markup=forms.group_keyboard(con, conf, g, lang))
+                            reply_markup=hub.teacher_keyboard(con, conf, teacher))
 
 
 @router.message(F.web_app_data)
-async def form_data(message: Message, con, conf, teacher) -> None:
+async def form_data(message: Message, bot: Bot, con, conf, teacher) -> None:
     now = datetime.now(timezone.utc)
     result = forms.process(con, teacher, message.from_user.id, message.web_app_data.data, message.date, now)
     log.info("Форма от %s: %s", message.from_user.id, "сохранено" if result.group_id else "отклонено")
-    markup = None
-    group_id = result.group_id or teacher["current_group_id"]
-    g = repo.group(con, group_id) if group_id else None
-    if g and g["active"] and g["teacher_id"] == teacher["id"]:
-        # Ссылки в кнопках несут данные группы — после каждого сохранения обновляем клавиатуру
-        markup = forms.group_keyboard(con, conf, g, teacher["lang"])
-    await message.answer(result.text, reply_markup=markup)
+    if result.text:
+        # данные групп в кнопках-приложениях обновляются после каждого сохранения
+        await message.answer(result.text, reply_markup=hub.teacher_keyboard(con, conf, teacher))
+    if result.notify_owner and conf.owner_id and conf.owner_id != message.from_user.id:
+        try:
+            await bot.send_message(conf.owner_id, result.notify_owner)
+        except TelegramAPIError:
+            pass
+    if result.action == "cards" and result.group_id:
+        await send_cards_for(message, con, teacher, repo.group(con, result.group_id))
+        await message.answer("✅", reply_markup=hub.teacher_keyboard(con, conf, teacher))
 
 
 def cards_week(con, group_id: int, today) -> object:
@@ -96,10 +118,15 @@ def cards_week(con, group_id: int, today) -> object:
 
 @router.message(F.text.in_(all_variants("btn_cards")))
 async def send_cards(message: Message, con, teacher) -> None:
-    lang = teacher["lang"]
     g = repo.group(con, teacher["current_group_id"]) if teacher["current_group_id"] else None
     if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
-        return await message.answer(t("choose_group_first", lang))
+        return await message.answer(t("choose_group_first", teacher["lang"]))
+    await send_cards_for(message, con, teacher, g)
+
+
+async def send_cards_for(message: Message, con, teacher, g) -> None:
+    """Рисует и присылает карточки группы: только ученики с отчётом за неделю и согласием родителя."""
+    lang = teacher["lang"]
     today = schedule.today()
     week = cards_week(con, g["id"], today)
     done = reports.reports_for_weeks(con, g["id"], [week])

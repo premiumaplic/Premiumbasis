@@ -290,7 +290,19 @@
       otherStage: "на другой станции", path: "Путь после B2", later: "Позже",
       teacherHint: "Переход на этой станции решает учитель. Отметьте, кто переходит дальше.",
       scoreHint: "Введите баллы — решение подставится само", needReason: "Укажите причину, где решение изменено",
-      endOfRoute: "конец пути", enterScores: "Введите хотя бы один балл"
+      endOfRoute: "конец пути", enterScores: "Введите хотя бы один балл",
+      journal: "Журнал группы", reportsWeek: "Недельные отчёты", attToday: "сегодня отмечено",
+      attMark: "отметить урок", stations: "Станции", hints: "Подсказки", cards: "Карточки родителям",
+      noHints: "подсказок нет", hintsN: "{n} шт.", cardsSub: "готово {k} из {n}", stationsSub: "перевести",
+      footer: "Данные уходят боту, когда вы нажимаете «Сохранить» внизу. Ответ бот пришлёт в чат.",
+      closeMarked: "Закрыть отмеченные · {n}", markToClose: "Отметьте подсказки, которые уже решены",
+      hintsEmpty: "По группе подсказок нет 👍", why: "Почему",
+      wholeGroup: "Вся группа", groupNow: "сейчас: {s}", pickStation: "На какую станцию?",
+      moveConfirm: "{who}: {from} ➜ {to}", move: "Перевести", skippedNote: "Пропущенные станции не появятся на карте ученика.",
+      examRestart: "Экзамены новой станции — каждые 2 месяца с сегодняшнего дня.",
+      cardsText: "Бот пришлёт в чат по картинке на каждого ученика, у которого есть отчёт за эту неделю и отметка о согласии родителя. Перешлите каждую карточку родителю.",
+      cardsReady: "Готово к отправке", cardsNoReport: "Нет отчёта за неделю", cardsNoConsent: "Нет согласия родителя",
+      sendCards: "Прислать карточки · {n}", noExam: "у этого предмета нет экзаменов"
     },
     uz: {
       save: "Saqlash", saveN: "Saqlash · {n}", next: "Keyingisi", toList: "Roʻyxatga",
@@ -322,7 +334,19 @@
       otherStage: "boshqa bosqichda", path: "B2 dan keyingi yoʻl", later: "Keyinroq",
       teacherHint: "Bu bosqichda oʻtishni oʻqituvchi hal qiladi. Kim oʻtishini belgilang.",
       scoreHint: "Ballarni kiriting — qaror oʻzi qoʻyiladi", needReason: "Qaror oʻzgartirilgan joyda sababini yozing",
-      endOfRoute: "yoʻl oxiri", enterScores: "Kamida bitta ball kiriting"
+      endOfRoute: "yoʻl oxiri", enterScores: "Kamida bitta ball kiriting",
+      journal: "Guruh jurnali", reportsWeek: "Haftalik hisobotlar", attToday: "bugun belgilangan",
+      attMark: "darsni belgilash", stations: "Bosqichlar", hints: "Maslahatlar", cards: "Ota-onalarga kartalar",
+      noHints: "maslahat yoʻq", hintsN: "{n} ta", cardsSub: "{n} tadan {k} tayyor", stationsSub: "oʻtkazish",
+      footer: "Pastdagi «Saqlash» bosilganda maʼlumotlar botga ketadi. Javobni bot chatga yuboradi.",
+      closeMarked: "Belgilanganlarni yopish · {n}", markToClose: "Hal boʻlgan maslahatlarni belgilang",
+      hintsEmpty: "Guruh boʻyicha maslahatlar yoʻq 👍", why: "Sababi",
+      wholeGroup: "Butun guruh", groupNow: "hozir: {s}", pickStation: "Qaysi bosqichga?",
+      moveConfirm: "{who}: {from} ➜ {to}", move: "Oʻtkazish", skippedNote: "Oʻtkazib yuborilgan bosqichlar xaritada koʻrinmaydi.",
+      examRestart: "Yangi bosqich imtihonlari — bugundan boshlab har 2 oyda.",
+      cardsText: "Bot shu hafta hisoboti va ota-ona roziligi bor har bir oʻquvchi uchun chatga rasm yuboradi. Har bir kartani ota-onaga yuboring.",
+      cardsReady: "Yuborishga tayyor", cardsNoReport: "Hafta hisoboti yoʻq", cardsNoConsent: "Ota-ona roziligi yoʻq",
+      sendCards: "Kartalarni yuborish · {n}", noExam: "bu fanda imtihon yoʻq"
     }
   };
   var lang = "ru";
@@ -387,6 +411,8 @@
   // Родная кнопка Telegram «← Назад» в шапке формы (null — спрятать)
   var backHandler = null, backBound = false;
   function setBack(handler) {
+    // внутри приложения группы «Назад» без своего действия ведёт на главный экран группы
+    if (!handler && window.SB && SB.hubHome) handler = SB.hubHome;
     backHandler = handler;
     var tg = tgo();
     if (!inTg() || !tg.BackButton) return;

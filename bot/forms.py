@@ -183,6 +183,8 @@ class Result:
     text: str
     group_id: int | None = None
     lines: list[str] = field(default_factory=list)
+    action: str = ""            # "cards" — после ответа прислать карточки группы
+    notify_owner: str = ""      # сообщение владельцу (например, учитель перевёл группу)
 
 
 def _ints(value) -> bool:
@@ -196,7 +198,7 @@ def _parse(raw: str) -> dict:
         data = json.loads(raw)
     except ValueError:
         raise FormError("err_bad_data") from None
-    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in ("att", "wk", "tp", "ex")
+    if (not isinstance(data, dict) or data.get("v") != 1 or data.get("t") not in ("att", "wk", "tp", "ex", "hints", "move", "cards")
             or not isinstance(data.get("u"), str) or not UUID_RE.match(data["u"])
             or not _ints(data.get("g"))):
         raise FormError("err_bad_data")
@@ -366,7 +368,9 @@ def _save_exam(con, teacher, g, data, tg_id: int, today: date, lang: str) -> lis
     key = "saved_exam" if by_score else "saved_decision"
     lines = [t(key, lang, group=g["name"], stage=stage[f"name_{suffix}"],
                passed=len(passed_names), repeat=len(repeat_names))]
-    nxt = exams.maybe_advance_group(con, g, stage, len(passed_names), len(passed_names) + len(repeat_names), today)
+    # группа переходит, если сдала хотя бы половина ВСЕХ учеников группы (а не только тех, чьи баллы уже введены)
+    nxt = exams.maybe_advance_group(con, g, stage, exams.passed_today(con, g["id"], stage["id"], today),
+                                    len(repo.group_students(con, g["id"])), today)
     if nxt:
         lines.append(t("group_advanced", lang, stage=nxt[f"name_{suffix}"]))
     if repeat_names and by_score:
@@ -380,7 +384,45 @@ def _save_exam(con, teacher, g, data, tg_id: int, today: date, lang: str) -> lis
     return lines
 
 
-SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic, "ex": _save_exam}
+def _save_hints(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    ids = data.get("close")
+    if not isinstance(ids, list) or not ids or len(ids) > 100 or not all(_ints(i) for i in ids):
+        raise FormError("err_bad_data")
+    closed = 0
+    for hint_id in ids:
+        row = con.execute("SELECT group_id FROM hints WHERE id = ?", (hint_id,)).fetchone()
+        if row and row["group_id"] == g["id"] and hints.close(con, hint_id, teacher["id"]):
+            closed += 1
+    return [t("hints_closed_n", lang, n=closed)]
+
+
+def _save_move(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    sid, stage_id = data.get("sid"), data.get("s")
+    if not _ints(sid) or not _ints(stage_id) or not g["has_map"]:
+        raise FormError("err_bad_data")
+    target = repo.stage(con, stage_id)
+    if target is None or target["subject"] != g["subject"]:
+        raise FormError("err_bad_data")
+    suffix = "uz" if lang == "uz" else "ru"
+    new = target[f"name_{suffix}"]
+    if sid == 0:
+        old = repo.stage(con, g["stage_id"])
+        moved = repo.move_group_station(con, tg_id, g["id"], stage_id, today)
+        _save_move.notify = (f"ℹ️ Учитель {teacher['name']} перевёл группу {g['name']} со станции "
+                             f"{old['name_ru'] if old else '—'} на {target['name_ru']} (учеников: {len(moved)}).")
+        return [t("stations_done_group", lang, group=g["name"], new=new, n=len(moved))]
+    if not repo.is_enrolled(con, sid, g["id"]):
+        raise FormError("err_no_students")
+    repo.move_station(con, tg_id, sid, stage_id, today)
+    return [t("stations_done_student", lang, name=repo.student(con, sid)["full_name"], new=new)]
+
+
+def _save_cards(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    return []  # сами карточки рисует и присылает обработчик чата (Result.action = "cards")
+
+
+SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic, "ex": _save_exam,
+          "hints": _save_hints, "move": _save_move, "cards": _save_cards}
 
 
 def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime) -> Result:
@@ -394,17 +436,19 @@ def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime
             return Result(t("duplicate", lang), data["g"])
         g = _own_group(con, teacher, data["g"])
         today = now.astimezone(schedule.TZ).date()
+        _save_move.notify = ""
         with tx(con):
             lines = SAVERS[data["t"]](con, teacher, g, data, tg_id, today, lang)
             reports.record_submission(con, data["u"], tg_id, data["t"], "saved")
-            new_hints = hints.evaluate_group(con, g["id"], today) if data["t"] != "tp" else 0
+            new_hints = hints.evaluate_group(con, g["id"], today) if data["t"] in ("att", "wk", "ex", "move") else 0
         if new_hints:
             lines.append(t("new_hints", lang, n=new_hints))
     except FormError as e:
         return Result(t("form_rejected", lang, reason=t(e.key, lang)), None)
     if (now - sent_at).total_seconds() > LATE_DELIVERY_SECONDS:
         lines.insert(0, t("late_delivery", lang, when=_when(sent_at, now, lang)))
-    return Result("\n".join(lines), g["id"], lines)
+    return Result("\n".join(lines), g["id"], lines, action="cards" if data["t"] == "cards" else "",
+                  notify_owner=_save_move.notify)
 
 
 def _when(sent_at: datetime, now: datetime, lang: str) -> str:

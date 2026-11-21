@@ -163,6 +163,14 @@ def close(con, hint_id: int, teacher_id: int) -> bool:
     return True
 
 
+def parts(con, hint, lang: str) -> tuple[str, str]:
+    """(заголовок, почему) — для приложения учителя."""
+    text = describe(con, hint, lang)
+    head, why = text.split("\n", 1)
+    title = head.split(" — ", 1)[1] if " — " in head else head
+    return title, why.split(": ", 1)[1] if ": " in why else why
+
+
 def describe(con, hint, lang: str) -> str:
     """«⚠️ Азиз Каримов — Свяжитесь с родителем\nПочему: пропуски 12 и 14 ноября»."""
     rule = hint["rule"].split(":")[0]
