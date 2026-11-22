@@ -69,6 +69,24 @@ TEXTS = {
                  "uz": "faqat joriy yoki oʻtgan haftani toʻldirish mumkin."},
     "err_questions": {"ru": "вопросы недели изменились — откройте форму заново.",
                       "uz": "hafta savollari oʻzgardi — shaklni qayta oching."},
+    "err_criteria": {"ru": "критерии оценки изменились — откройте приложение заново.",
+                     "uz": "baholash mezonlari oʻzgardi — ilovani qayta oching."},
+    "err_topics_full": {"ru": "у ученика слишком много тем — уберите старые и сохраните ещё раз.",
+                        "uz": "oʻquvchida mavzular juda koʻp — eskilarini olib tashlang va qayta saqlang."},
+    "saved_pf": {
+        "ru": "Сохранено: навыки и темы {group} — учеников: {n} (оценки: {rated}, изменений тем: {topics}).",
+        "uz": "Saqlandi: {group} koʻnikmalari va mavzulari — oʻquvchilar: {n} (baholar: {rated}, mavzu oʻzgarishi: {topics}).",
+    },
+    "btn_all_groups": {"ru": "🛟 Все группы", "uz": "🛟 Barcha guruhlar"},
+    "support_pick": {
+        "ru": "Вы — саппорт-учитель: можно работать в любой группе центра. Выберите группу:",
+        "uz": "Siz — yordamchi oʻqituvchisiz: markazning istalgan guruhida ishlash mumkin. Guruhni tanlang:",
+    },
+    "support_chosen": {
+        "ru": "Группа {group} (учитель: {teacher}). Откройте журнал кнопкой «📱 {group}» внизу.",
+        "uz": "{group} guruhi (oʻqituvchi: {teacher}). Jurnalni pastdagi «📱 {group}» tugmasi bilan oching.",
+    },
+    "support_no_groups": {"ru": "В центре пока нет групп.", "uz": "Markazda hozircha guruh yoʻq."},
     "err_att_off": {"ru": "посещаемость выключена владельцем.", "uz": "davomat markaz egasi tomonidan oʻchirilgan."},
     "err_no_students": {"ru": "ни один ученик не из этой группы.", "uz": "birorta oʻquvchi bu guruhdan emas."},
     "btn_exam": {"ru": "🎓 Экзамен", "uz": "🎓 Imtihon"},
@@ -163,11 +181,11 @@ TEXTS = {
     "hub_placeholder": {"ru": "Откройте журнал группы кнопкой ниже", "uz": "Guruh jurnalini pastdagi tugma bilan oching"},
     "hub_hello": {
         "ru": "Здравствуйте, {name}! Нажмите кнопку с группой внизу — откроется журнал группы: "
-              "недельный отчёт, ученики и их динамика, карта станций, итоги, экзамен, тема, подсказки "
+              "недельный отчёт, ученики и их профили, навыки и темы, карта станций, итоги, экзамен, тема, подсказки "
               "и карточки для родителей.\n\n"
               "Если кнопок не видно — нажмите значок клавиатуры справа в строке ввода.",
         "uz": "Assalomu alaykum, {name}! Pastdagi guruh tugmasini bosing — guruh jurnali ochiladi: "
-              "haftalik hisobot, oʻquvchilar va ularning oʻsishi, bosqichlar xaritasi, natijalar, imtihon, mavzu, "
+              "haftalik hisobot, oʻquvchilar va ularning profillari, koʻnikmalar va mavzular, bosqichlar xaritasi, natijalar, imtihon, mavzu, "
               "maslahatlar va ota-onalar uchun kartalar.\n\n"
               "Tugmalar koʻrinmasa — yozish maydonining oʻngidagi klaviatura belgisini bosing.",
     },

@@ -305,7 +305,8 @@
       sendCards: "Прислать карточки · {n}", noExam: "у этого предмета нет экзаменов",
       lv0: "слабо", lv1: "так себе", lv2: "хорошо", lv3: "отлично", optional: "можно пропустить",
       notRated: "не оценивалось на этой неделе", pickLevel: "Выберите уровень",
-      starWeek: "Звезда недели", starHint: "На карточке родителю появится значок ★"
+      starWeek: "Звезда недели", starHint: "На карточке родителю появится значок ★",
+      agoToday: "сегодня", agoYesterday: "вчера", agoDays: "{n} дн. назад"
     },
     uz: {
       save: "Saqlash", saveN: "Saqlash · {n}", next: "Keyingisi", toList: "Roʻyxatga",
@@ -352,7 +353,8 @@
       sendCards: "Kartalarni yuborish · {n}", noExam: "bu fanda imtihon yoʻq",
       lv0: "sust", lv1: "oʻrtacha", lv2: "yaxshi", lv3: "aʼlo", optional: "oʻtkazish mumkin",
       notRated: "bu hafta baholanmagan", pickLevel: "Darajani tanlang",
-      starWeek: "Hafta yulduzi", starHint: "Ota-ona kartasida ★ belgisi paydo boʻladi"
+      starWeek: "Hafta yulduzi", starHint: "Ota-ona kartasida ★ belgisi paydo boʻladi",
+      agoToday: "bugun", agoYesterday: "kecha", agoDays: "{n} kun oldin"
     }
   };
   var lang = "ru";
@@ -397,7 +399,8 @@
     saveHandler = handler;
     var tg = tgo();
     if (inTg() && tg.MainButton) {
-      tg.MainButton.setParams({ text: text, color: "#ef8a2b", text_color: "#ffffff", is_visible: !!visible });
+      var primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim() || "#b85a0a";
+      tg.MainButton.setParams({ text: text, color: primary, text_color: "#ffffff", is_visible: !!visible });
       return;
     }
     if (!fallbackBar) {
@@ -412,6 +415,7 @@
     }
     fallbackBar.firstChild.textContent = text;
     fallbackBar.classList.toggle("hidden", !visible);
+    document.body.classList.toggle("has-save", !!visible);   // место снизу, чтобы кнопка не закрывала страницу
   }
 
   // Родная кнопка Telegram «← Назад» в шапке формы (null — спрятать)
@@ -474,7 +478,8 @@
     try { localStorage.removeItem("sb:" + key); } catch (e) { /* ничего */ }
   }
 
-  var AVATAR_COLORS = ["#e9883a", "#3f9e6a", "#3d86c6", "#8a62c9", "#d4604f", "#c99a2e", "#2f9e93", "#c35f8f"];
+  // цвета аватаров: белая буква читается (контраст не ниже 3:1 для крупного текста)
+  var AVATAR_COLORS = ["#c46a1f", "#2f8a5a", "#2f73b0", "#7651b8", "#b94c3d", "#9a7414", "#24807a", "#a84a78"];
   function avatar(name, id) {
     var el = document.createElement("span");
     el.className = "avatar";
@@ -710,7 +715,17 @@
     building: '<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/>',
     route: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/>',
     shuffle: '<path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
-    close: '<path d="M6 6l12 12M18 6L6 18"/>'
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    radar: '<path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z"/><path d="M12 7.5l4 2.3v4.4l-4 2.3-4-2.3V9.8z"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    minus: '<path d="M5 12h14"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.5"/><path d="M12 17.5v.5"/>',
+    checkCircle: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+    award: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22l5-3 5 3-1.5-8"/>',
+    lifebuoy: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M5.6 5.6l3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6"/>',
+    next: '<path d="M9 6l6 6-6 6"/>',
+    prev: '<path d="M15 6l-6 6 6 6"/>'
   };
   function icon(name, cls) {
     var box = el("span", "ic" + (cls ? " " + cls : ""));
@@ -719,8 +734,189 @@
     return box;
   }
 
+  // ---------------------------------------------------------------- движение
+
+  // Смена экрана: dir — "push" (вглубь), "pop" (назад), "tab" (вкладка), "none" (без анимации).
+  // Где есть View Transitions API — плавный переход со снимком старого экрана и «перелётом» общего
+  // элемента (shared: {from: элемент старого экрана, to: функция → элемент нового}); иначе новый экран
+  // просто въезжает (CSS-классы .enter-*). При «Уменьшить движение» — мгновенно.
+  var vtRunning = null;
+  function transition(dir, update, shared) {
+    var root = document.documentElement;
+    var mark = function () {
+      var scr = document.querySelector("#app > .screen");
+      if (scr && dir !== "none") scr.classList.add("enter-" + dir);
+    };
+    if (reduced || dir === "none" || !document.startViewTransition) {
+      update();
+      if (!reduced) mark();
+      return;
+    }
+    if (vtRunning) { try { vtRunning.skipTransition(); } catch (e) { /* уже закончился */ } }
+    root.setAttribute("data-nav", dir);
+    var names = [];
+    var name = function (node, value) { if (node) { node.style.viewTransitionName = value; names.push(node); } };
+    if (shared && shared.from) {
+      name(shared.from.av, "hero-av");
+      name(shared.from.name, "hero-name");
+    }
+    var vt;
+    try {
+      vt = document.startViewTransition(function () {
+        names.forEach(function (n) { n.style.viewTransitionName = ""; });
+        names = [];
+        update();
+        if (shared && shared.to) {
+          var to = shared.to() || {};
+          name(to.av, "hero-av");
+          name(to.name, "hero-name");
+        }
+      });
+    } catch (e) {
+      root.removeAttribute("data-nav");
+      update(); mark();
+      return;
+    }
+    vtRunning = vt;
+    vt.finished.then(done, done);
+    function done() {
+      if (vtRunning === vt) vtRunning = null;
+      root.removeAttribute("data-nav");
+      names.forEach(function (n) { n.style.viewTransitionName = ""; });
+    }
+  }
+
+  // Короткий «отскок» числа или отметки после изменения
+  function bump(node) {
+    if (reduced || !node) return;
+    node.classList.remove("bump");
+    void node.offsetWidth;   // перезапуск анимации
+    node.classList.add("bump");
+  }
+
+  // Плавная смена числа (например, общий рейтинг 6.8 → 7.2)
+  function tween(from, to, dur, onStep) {
+    if (reduced || from === to) { onStep(to); return; }
+    var start = null;
+    var step = function (ts) {
+      if (start === null) start = ts;
+      var k = Math.min(1, (ts - start) / dur);
+      var e = 1 - Math.pow(1 - k, 3);
+      onStep(from + (to - from) * e);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // Лепестковая диаграмма (радар) по критериям: values — числа 0–max (0 — нет оценки).
+  // prev — прошлая оценка (пунктиром). Возвращает элемент; .set(values) плавно перерисовывает.
+  function radar(labels, values, prev, opts) {
+    opts = opts || {};
+    var size = opts.size || 260, max = opts.max || 10, n = labels.length;
+    var pad = opts.labels === false ? 10 : 46, cx = size / 2, cy = size / 2, R = size / 2 - pad;
+    var box = el("div", "radar" + (opts.cls ? " " + opts.cls : ""));
+    var s = svg("svg", { viewBox: "0 0 " + size + " " + size, width: "100%", role: "img" });
+    var pt = function (i, v) {
+      var a = -Math.PI / 2 + i * 2 * Math.PI / n, r = R * Math.max(0, Math.min(max, v)) / max;
+      return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    };
+    var poly = function (vals) { return vals.map(function (v, i) { return pt(i, v).map(function (x) { return x.toFixed(1); }).join(","); }).join(" "); };
+    [0.25, 0.5, 0.75, 1].forEach(function (k) {
+      s.appendChild(svg("polygon", { points: poly(labels.map(function () { return max * k; })), "class": "rd-grid" }));
+    });
+    labels.forEach(function (lab, i) {
+      var e = pt(i, max);
+      s.appendChild(svg("line", { x1: cx, y1: cy, x2: e[0], y2: e[1], "class": "rd-axis" }));
+      if (opts.labels !== false) {
+        var p = pt(i, max * 1.17), anchor = Math.abs(p[0] - cx) < 4 ? "middle" : p[0] > cx ? "start" : "end";
+        var tx = svg("text", { x: p[0], y: p[1] + 4, "text-anchor": anchor, "class": "rd-label" });
+        tx.textContent = lab;
+        s.appendChild(tx);
+      }
+    });
+    if (prev && prev.some(function (v) { return v; })) {
+      s.appendChild(svg("polygon", { points: poly(prev), "class": "rd-prev" }));
+    }
+    var area = svg("polygon", { points: poly(labels.map(function () { return 0; })), "class": "rd-area" });
+    s.appendChild(area);
+    var dots = labels.map(function () { var d = svg("circle", { r: 3.5, cx: cx, cy: cy, "class": "rd-dot" }); s.appendChild(d); return d; });
+    box.appendChild(s);
+    var cur = labels.map(function () { return 0; });
+    function draw(vals) {
+      area.setAttribute("points", poly(vals));
+      vals.forEach(function (v, i) {
+        var p = pt(i, v);
+        dots[i].setAttribute("cx", p[0].toFixed(1)); dots[i].setAttribute("cy", p[1].toFixed(1));
+        dots[i].style.opacity = v ? 1 : 0;
+      });
+    }
+    box.set = function (vals, dur) {
+      var from = cur.slice(), to = vals.map(function (v) { return v || 0; });
+      cur = to;
+      tween(0, 1, dur === undefined ? 450 : dur, function (k) {
+        draw(from.map(function (f, i) { return f + (to[i] - f) * k; }));
+      });
+    };
+    draw(cur);
+    // первая отрисовка — «раскрытие» из центра, когда диаграмма уже на экране
+    requestAnimationFrame(function () { box.set(values || [], opts.dur === undefined ? 700 : opts.dur); });
+    return box;
+  }
+
+  // Нижняя шторка: build(body, close). Закрывается фоном, кнопкой «Назад» или свайпом вниз.
+  function sheet(title, build) {
+    var back = el("div", "bsheet-back");
+    var panel = el("div", "bsheet");
+    panel.setAttribute("role", "dialog");
+    panel.appendChild(el("div", "bsheet-grip"));
+    if (title) panel.appendChild(el("div", "bsheet-title", title));
+    var body = el("div", "bsheet-body");
+    panel.appendChild(body);
+    document.body.appendChild(back);
+    document.body.appendChild(panel);
+    var closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      back.classList.add("out");
+      panel.classList.add("out");
+      setTimeout(function () { back.remove(); panel.remove(); }, reduced ? 0 : 200);
+      if (prevBack !== undefined) setBack(prevBack);
+    }
+    var prevBack = backHandler;
+    setBack(close);
+    back.addEventListener("click", close);
+    // свайп вниз за шторку
+    var y0 = null, dy = 0;
+    panel.addEventListener("touchstart", function (e) {
+      if (body.scrollTop > 0) return;
+      y0 = e.touches[0].clientY; dy = 0; panel.style.transition = "none";
+    }, { passive: true });
+    panel.addEventListener("touchmove", function (e) {
+      if (y0 === null) return;
+      dy = Math.max(0, e.touches[0].clientY - y0);
+      panel.style.transform = "translateY(" + dy + "px)";
+    }, { passive: true });
+    panel.addEventListener("touchend", function () {
+      if (y0 === null) return;
+      y0 = null; panel.style.transition = ""; panel.style.transform = "";
+      if (dy > 80) close();
+    });
+    build(body, close);
+    return { close: close };
+  }
+
+  // «3 дн. назад», «сегодня»
+  function ago(isoDate, todayIso) {
+    if (!isoDate) return "";
+    var days = Math.round((parseISO(todayIso || SB.localDate()) - parseISO(isoDate)) / 86400000);
+    if (days <= 0) return t("agoToday");
+    if (days === 1) return t("agoYesterday");
+    return t("agoDays", { n: days });
+  }
+
   var ui = {
-    icon: icon,
+    icon: icon, transition: transition, bump: bump, tween: tween, radar: radar, sheet: sheet, ago: ago,
     addTexts: addTexts, ring: ring, sparkline: sparkline, countUp: countUp, confetti: confetti, mascot: mascot,
     plural: plural, reduced: reduced, svg: svg,
     tgo: tgo, inTg: inTg, t: t, setLang: setLang, lang: function () { return lang; },

@@ -509,7 +509,7 @@ def test_excel_export_for_teacher_and_owner(chat, con):
     calls = _form(chat, TEACHER_TG, {"t": "export", "g": gid})
     doc = next(c for c in calls if type(c).__name__ == "SendDocument")
     wb = load_workbook(io.BytesIO(doc.document.data))
-    assert wb.sheetnames[0] == "Сводка" and len(wb.sheetnames) == 3
+    assert wb.sheetnames[0] == "Сводка" and len(wb.sheetnames) == 4 and wb.sheetnames[-1] == "Навыки и темы"
     rows = list(wb.worksheets[1].iter_rows(values_only=True))
     assert rows[1][:2] == ("10-А", "Азиз Каримов") and "3 · сделано хорошо" in rows[1]
     assert "Делать домашнее задание вовремя" in rows[1] and "Чужой Ученик" not in str(rows)
@@ -520,3 +520,45 @@ def test_excel_export_for_teacher_and_owner(chat, con):
     doc = next(c for c in calls if type(c).__name__ == "SendDocument")
     summary = list(load_workbook(io.BytesIO(doc.document.data)).worksheets[0].iter_rows(values_only=True))
     assert {r[1] for r in summary[1:]} == {"10-А", "11-Б"}
+
+
+def _reply_buttons(calls):
+    for c in reversed(calls):
+        markup = getattr(c, "reply_markup", None)
+        if markup is not None and hasattr(markup, "keyboard"):
+            return [b.text for row in markup.keyboard for b in row]
+    return []
+
+
+def test_owner_makes_support_teacher_who_works_in_any_group(chat, con):
+    own = make_teacher(con, TEACHER_TG, "Дилноза Ахмедова")
+    gid = make_group(con, "10-А", teacher_id=own)
+    sup = make_teacher(con, 600005, "Саида Каримова")
+    # обычный учитель без групп кнопки «Все группы» не видит
+    calls = run(chat.send(600005, "/start"))
+    assert "нет групп" in last_text(calls) and "🛟 Все группы" not in _reply_buttons(calls)
+    alerts = [c.text for c in run(chat.press(600005, f"t:sgroup:{gid}")) if type(c).__name__ == "AnswerCallbackQuery"]
+    assert alerts == ["Эта группа вам не назначена."]
+    assert repo.teacher(con, sup)["current_group_id"] is None
+    # владелец меняет роль
+    calls = run(chat.press(OWNER, f"a:teacher:{sup}:0"))
+    assert "🛟 Сделать саппорт-учителем" in buttons(calls)
+    calls = run(chat.press(OWNER, f"a:t_role:{sup}:0"))
+    assert "саппорт-учитель" in last_text(calls) and "👩‍🏫 Сделать обычным учителем" in buttons(calls)
+    # саппорт видит все группы и выбирает чужую
+    calls = run(chat.send(600005, "/start"))
+    assert "🛟 Все группы" in _reply_buttons(calls) and "10-А · Английский" in buttons(calls)
+    calls = run(chat.press(600005, f"t:sgroup:{gid}"))
+    assert "учитель: Дилноза Ахмедова" in last_text(calls)
+    assert "📱 10-А · Английский" in _reply_buttons(calls)
+    # и сохраняет оценку в этой группе
+    sid = repo.add_student(con, OWNER, "Азиз Каримов", "ru", True, gid, __import__("datetime").date(2026, 11, 2))
+    from bot import profiles
+    cids = [c["id"] for c in profiles.criteria_for(con, "en")]
+    calls = _form(chat, 600005, {"t": "pf", "g": gid, "c": cids, "r": [[sid, [8] * 6, ["Food"], [], []]]})
+    assert "Сохранено: навыки и темы 10-А" in last_text(calls)
+    # роль снята — чужая группа снова недоступна
+    run(chat.press(OWNER, f"a:t_role:{sup}:0"))
+    calls = _form(chat, 600005, {"t": "pf", "g": gid, "c": cids, "r": [[sid, [5] * 6, [], [], []]]})
+    assert "не назначена" in last_text(calls)
+    assert "🛟 Все группы" not in _reply_buttons(run(chat.send(600005, "/start")))

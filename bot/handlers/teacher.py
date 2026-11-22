@@ -47,9 +47,73 @@ async def send_groups(target, con, conf, teacher, is_owner: bool = False) -> Non
     message = target.message if isinstance(target, CallbackQuery) else target
     if isinstance(target, CallbackQuery):
         await target.answer()
-    if markup is None or (is_owner and not repo.list_groups(con, teacher_id=teacher["id"])):
+    own = repo.list_groups(con, teacher_id=teacher["id"])
+    if repo.is_support(teacher):
+        await message.answer(t("hub_hello", lang, name=teacher["name"]), reply_markup=markup)
+        return await send_support_groups(message, con, teacher)
+    if markup is None or (is_owner and not own):
         return await message.answer(t("no_groups", lang, name=teacher["name"]), reply_markup=markup)
     await message.answer(t("hub_hello", lang, name=teacher["name"]), reply_markup=markup)
+
+
+SUPPORT_PAGE = 40
+
+
+def support_markup(con, teacher, page: int = 0):
+    """Все группы центра кнопками (по 40 на странице) — для саппорт-учителя."""
+    lang = teacher["lang"]
+    groups = repo.list_groups(con)
+    chunk = groups[page * SUPPORT_PAGE:(page + 1) * SUPPORT_PAGE]
+    buttons = [(f"{g['name']} · {g['subject_uz' if lang == 'uz' else 'subject_ru']}", T(act="sgroup", id=g["id"]))
+               for g in chunk]
+    rows = column(buttons, 2)
+    pager = []
+    if page > 0:
+        pager.append(("◀️", T(act="sgroups", id=page - 1)))
+    if (page + 1) * SUPPORT_PAGE < len(groups):
+        pager.append(("▶️", T(act="sgroups", id=page + 1)))
+    if pager:
+        rows.append(pager)
+    return kb(*rows) if rows else None, len(groups)
+
+
+async def send_support_groups(message: Message, con, teacher, page: int = 0) -> None:
+    markup, total = support_markup(con, teacher, page)
+    lang = teacher["lang"]
+    if not total:
+        return await message.answer(t("support_no_groups", lang))
+    await message.answer(t("support_pick", lang), reply_markup=markup)
+
+
+@router.message(F.text.in_(all_variants("btn_all_groups")))
+async def all_groups(message: Message, con, teacher) -> None:
+    if not repo.is_support(teacher):
+        return await message.answer(t("press_button", teacher["lang"]))
+    await send_support_groups(message, con, teacher)
+
+
+@router.callback_query(T.filter(F.act == "sgroups"))
+async def all_groups_page(cb: CallbackQuery, callback_data: T, con, teacher) -> None:
+    if not repo.is_support(teacher):
+        return await cb.answer(t("not_your_group", teacher["lang"]), show_alert=True)
+    markup, _ = support_markup(con, teacher, max(0, callback_data.id))
+    await show(cb, t("support_pick", teacher["lang"]), markup)
+
+
+@router.callback_query(T.filter(F.act == "sgroup"))
+async def support_choose(cb: CallbackQuery, callback_data: T, con, conf, teacher, is_owner: bool = False) -> None:
+    """Саппорт-учитель выбрал группу: под полем ввода появляется кнопка её журнала."""
+    lang = teacher["lang"]
+    g = repo.group(con, callback_data.id)
+    # не доверяем кнопке: роль и группа проверяются заново
+    if not repo.is_support(teacher) or not repo.can_teach(teacher, g):
+        return await cb.answer(t("not_your_group", lang), show_alert=True)
+    reports.set_current_group(con, teacher["id"], g["id"])
+    log.info("Саппорт-учитель %s выбрал группу %s", cb.from_user.id, g["id"])
+    fresh = repo.teacher(con, teacher["id"])
+    await cb.answer()
+    await cb.message.answer(t("support_chosen", lang, group=g["name"], teacher=g["teacher_name"] or "—"),
+                            reply_markup=keyboard(con, conf, fresh, is_owner))
 
 
 @router.message(CommandStart())
@@ -72,7 +136,7 @@ async def groups_button(cb: CallbackQuery, con, conf, teacher, is_owner: bool = 
 async def legacy_group(message: Message, con, conf, teacher) -> None:
     """Группа слишком большая для приложения в одной ссылке — формы отдельными кнопками."""
     name = message.text[2:].strip()
-    g = next((x for x in repo.list_groups(con, teacher_id=teacher["id"]) if x["name"] == name), None)
+    g = next((x for x in repo.teacher_groups(con, teacher) if x["name"] == name), None)
     if not g:
         return await message.answer(t("not_your_group", teacher["lang"]))
     reports.set_current_group(con, teacher["id"], g["id"])
@@ -85,7 +149,7 @@ async def choose_group(cb: CallbackQuery, callback_data: T, con, conf, teacher) 
     g = repo.group(con, callback_data.id)
     lang = teacher["lang"]
     # Не доверяем кнопке: группа должна быть активной и принадлежать этому учителю
-    if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
+    if not repo.can_teach(teacher, g):
         return await cb.answer(t("not_your_group", lang), show_alert=True)
     reports.set_current_group(con, teacher["id"], g["id"])
     await cb.answer()
@@ -136,7 +200,7 @@ def cards_week(con, group_id: int, today) -> object:
 @router.message(F.text.in_(all_variants("btn_cards")))
 async def send_cards(message: Message, con, teacher) -> None:
     g = repo.group(con, teacher["current_group_id"]) if teacher["current_group_id"] else None
-    if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
+    if not repo.can_teach(teacher, g):
         return await message.answer(t("choose_group_first", teacher["lang"]))
     await send_cards_for(message, con, teacher, g)
 
@@ -189,7 +253,7 @@ def _skipped_text(skipped, lang: str) -> str:
 async def show_hints(message: Message, con, teacher) -> None:
     lang = teacher["lang"]
     g = repo.group(con, teacher["current_group_id"]) if teacher["current_group_id"] else None
-    if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
+    if not repo.can_teach(teacher, g):
         return await message.answer(t("choose_group_first", lang))
     hints.evaluate_group(con, g["id"])
     rows = hints.open_hints(con, g["id"])

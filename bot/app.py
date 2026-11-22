@@ -15,7 +15,8 @@ WIZARD_ACTS = {"t_add_lang", "t_add_back", "g_add_subj", "g_add_teacher", "g_add
 
 
 # Кнопки под полем ввода, которые всегда означают «перейти», а не «ответ на вопрос бота»
-NAV_TEXTS = {"☰ Меню владельца", "🔄 Обновить", "🔄 Yangilash", "🔁 Другая группа", "🔁 Boshqa guruh"}
+NAV_TEXTS = {"☰ Меню владельца", "🔄 Обновить", "🔄 Yangilash", "🔁 Другая группа", "🔁 Boshqa guruh",
+             "🛟 Все группы", "🛟 Barcha guruhlar"}
 
 
 async def reset_input_on_keyboard(handler, event, data):

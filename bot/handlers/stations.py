@@ -26,7 +26,7 @@ router.callback_query.filter(TeacherOnly())
 def _group(con, teacher):
     gid = teacher["current_group_id"]
     g = repo.group(con, gid) if gid else None
-    if not g or not g["active"] or g["teacher_id"] != teacher["id"]:
+    if not repo.can_teach(teacher, g):
         return None
     return g
 

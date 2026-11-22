@@ -7,6 +7,7 @@
   • показатель упал на 2 ступени от среднего за 4 недели → «Резкий спад: …»
   • за 3 недели до экзамена уровень ниже проходного     → «Риск не сдать экзамен»
   • рост 3 недели подряд                                → «Похвалите»
+  • 3 и больше непонятных темы (меню «Навыки и темы»)    → «Повторите непонятные темы»
 
 Одна подсказка по одному правилу и ученику не повторяется, пока её не закрыли
 или пока условие не исчезло. Под каждой подсказкой — почему она появилась.
@@ -24,6 +25,7 @@ TITLES = {
     "drop": {"ru": "Резкий спад: {q}", "uz": "Keskin pasayish: {q}"},
     "exam_risk": {"ru": "Риск не сдать экзамен", "uz": "Imtihondan oʻta olmaslik xavfi"},
     "growth": {"ru": "Похвалите", "uz": "Maqtang"},
+    "unclear": {"ru": "Повторите непонятные темы", "uz": "Tushunilmagan mavzularni takrorlang"},
 }
 WHY = {
     "absent": {"ru": "пропуски: {dates}", "uz": "kelmagan kunlar: {dates}"},
@@ -33,6 +35,7 @@ WHY = {
     "exam_risk": {"ru": "экзамен {date}, уровень {level}% при проходном {need}%",
                   "uz": "imtihon {date}, daraja {level}%, oʻtish uchun {need}%"},
     "growth": {"ru": "средний балл растёт {n} недели подряд", "uz": "oʻrtacha ball {n} hafta ketma-ket oʻsmoqda"},
+    "unclear": {"ru": "не понял: {topics}", "uz": "tushunmagan: {topics}"},
 }
 
 
@@ -113,6 +116,13 @@ def check_student(con, student_id: int, g, on: date) -> dict[str, dict]:
 
         if rules.growth_streak(con, student_id, gid, latest_week):
             fired["growth"] = {"n": repo.get_int(con, "hint_growth_weeks", 3)}
+
+    # ---- темы, которые ученик не понял (меню «Навыки и темы»)
+    unclear = [r["title"] for r in con.execute(
+        "SELECT title FROM student_topics WHERE student_id = ? AND subject = ? AND status = 'unclear' "
+        "ORDER BY updated_on DESC, id DESC", (student_id, g["subject"]))]
+    if len(unclear) >= repo.get_int(con, "hint_unclear_topics", 3):
+        fired["unclear"] = {"topics": unclear[:4], "n": len(unclear)}
     return fired
 
 
@@ -156,10 +166,10 @@ def open_hints(con, group_id: int) -> list:
 
 
 def close(con, hint_id: int, teacher_id: int) -> bool:
-    """Закрывает подсказку, если она из группы этого учителя."""
-    row = con.execute("SELECT h.id FROM hints h JOIN groups g ON g.id = h.group_id "
-                      "WHERE h.id = ? AND g.teacher_id = ? AND h.closed_at IS NULL", (hint_id, teacher_id)).fetchone()
-    if not row:
+    """Закрывает подсказку, если она из группы этого учителя (саппорт-учитель — из любой активной группы)."""
+    row = con.execute("SELECT h.id, h.group_id FROM hints h WHERE h.id = ? AND h.closed_at IS NULL",
+                      (hint_id,)).fetchone()
+    if not row or not repo.can_teach(repo.teacher(con, teacher_id), repo.group(con, row["group_id"])):
         return False
     con.execute("UPDATE hints SET closed_at = ? WHERE id = ?", (datetime.now().isoformat(timespec="seconds"), hint_id))
     return True
@@ -193,6 +203,9 @@ def describe(con, hint, lang: str) -> str:
         elif rule == "exam_risk":
             why = WHY[rule][lang].format(date=schedule.human_date(date.fromisoformat(d["date"]), lang),
                                          level=d["level"], need=d["need"])
+        elif rule == "unclear":
+            topics = ", ".join(d.get("topics", [])) + ("…" if d.get("n", 0) > len(d.get("topics", [])) else "")
+            why = WHY[rule][lang].format(topics=topics)
         else:
             why = WHY[rule][lang].format(n=d.get("n", 3))
     icon = "🌟" if rule == "growth" else "⚠️"

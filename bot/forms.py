@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
-from bot import exams, hints, progress, repo, reports, schedule
+from bot import exams, hints, profiles, progress, repo, reports, schedule
 from bot.payload import SEND_DATA_LIMIT, byte_size, encode_param
 from bot.texts import t
 from bot.timefmt import human_time
@@ -221,7 +221,8 @@ def _parse(raw: str) -> dict:
 
 def _own_group(con, teacher, group_id: int):
     g = repo.group(con, group_id)
-    if not g or not g["active"] or teacher is None or g["teacher_id"] != teacher["id"]:
+    # своя группа; саппорт-учитель — любая активная группа центра
+    if not repo.can_teach(teacher, g):
         raise FormError("err_not_your_group")
     return g
 
@@ -325,6 +326,7 @@ def _save_topic(con, teacher, g, data, tg_id: int, today: date, lang: str) -> li
     else:
         raise FormError("err_bad_data")
     reports.set_topic(con, g["id"], topic)
+    profiles.log_topic(con, g["id"], topic, today)
     return [t("saved_topic", lang, group=g["name"], topic=topic)]
 
 
@@ -464,8 +466,67 @@ def _save_export(con, teacher, g, data, tg_id: int, today: date, lang: str, out:
     return []
 
 
+def _titles(value) -> list[str]:
+    if not isinstance(value, list) or len(value) > 40:
+        raise FormError("err_bad_data")
+    out = []
+    for item in value:
+        title = profiles.clean_title(item)
+        if title is None:
+            raise FormError("err_bad_data")
+        out.append(title)
+    return out
+
+
+def _save_profile(con, teacher, g, data, tg_id: int, today: date, lang: str) -> list[str]:
+    """Навыки и темы: строки [ученик, оценки по критериям | null, выучил, не понял, убрать].
+
+    Оценки — по одной на критерий в порядке c (1–10, 0 — не оценивал), null — без новой оценки.
+    Темы — названия; тема, которая у ученика уже есть, меняет статус.
+    """
+    cids = data.get("c")
+    allowed = [c["id"] for c in profiles.criteria_for(con, g["subject"])]
+    if not isinstance(cids, list) or cids != allowed:
+        raise FormError("err_criteria")
+    rows = data.get("r")
+    if not isinstance(rows, list) or not rows or len(rows) > 60:
+        raise FormError("err_bad_data")
+    parsed = {}
+    for item in rows:
+        if not isinstance(item, list) or len(item) != 5 or not _ints(item[0]) or item[0] in parsed:
+            raise FormError("err_bad_data")
+        ratings, values = item[1], None
+        if ratings is not None:
+            if (not isinstance(ratings, list) or len(ratings) != len(cids)
+                    or not all(_ints(v) and 0 <= v <= profiles.SCALE_MAX for v in ratings) or not any(ratings)):
+                raise FormError("err_bad_data")
+            values = {cid: v for cid, v in zip(cids, ratings) if v}
+        learned, unclear, removed = _titles(item[2]), _titles(item[3]), _titles(item[4])
+        keys = [x.casefold() for x in learned + unclear + removed]
+        if len(keys) != len(set(keys)) or (values is None and not keys):
+            raise FormError("err_bad_data")
+        parsed[item[0]] = (values, learned, unclear, removed)
+    good, foreign = _split_students(con, g["id"], list(parsed))
+    if not good:
+        raise FormError("err_no_students")
+    rated = topics = 0
+    for sid in good:
+        values, learned, unclear, removed = parsed[sid]
+        if values:
+            profiles.save_ratings(con, tg_id, sid, g["subject"], g["id"], today, values)
+            rated += 1
+        topics += profiles.set_topics(con, tg_id, sid, g["subject"], today, learned, unclear, removed)
+        if profiles.topic_count(con, sid, g["subject"]) > profiles.TOPICS_MAX:
+            raise FormError("err_topics_full")
+    lines = [t("saved_pf", lang, group=g["name"], n=len(good), rated=rated, topics=topics)]
+    if foreign:
+        lines.append(t("skipped_foreign", lang, k=foreign))
+    return lines
+
+
 SAVERS = {"att": _save_attendance, "wk": _save_weekly, "tp": _save_topic, "ex": _save_exam,
-          "hints": _save_hints, "move": _save_move, "cards": _save_cards, "export": _save_export}
+          "hints": _save_hints, "move": _save_move, "cards": _save_cards, "export": _save_export,
+          "pf": _save_profile}
 NEEDS_RESULT = {"move", "cards", "export"}   # этим обработчикам нужен сам ответ (уведомление владельцу, список)
 
 
@@ -485,7 +546,7 @@ def process(con, teacher, tg_id: int, raw: str, sent_at: datetime, now: datetime
         with tx(con):
             lines = SAVERS[data["t"]](*args)
             reports.record_submission(con, data["u"], tg_id, data["t"], "saved")
-            new_hints = hints.evaluate_group(con, g["id"], today) if data["t"] in ("att", "wk", "ex", "move") else 0
+            new_hints = hints.evaluate_group(con, g["id"], today) if data["t"] in ("att", "wk", "ex", "move", "pf") else 0
         if new_hints:
             lines.append(t("new_hints", lang, n=new_hints))
     except FormError as e:

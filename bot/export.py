@@ -3,6 +3,7 @@
 Файл уходит только в личный чат того, кто его запросил. Лист «Сводка» — по группам,
 дальше по листу на каждую неделю: ученик, ответы по каждому вопросу (с цветом уровня),
 средний уровень, звезда недели, цель на следующую неделю, комментарий.
+Последний лист «Навыки и темы» — рейтинг по критериям (1–10), выученные и непонятные темы.
 """
 
 import io
@@ -12,11 +13,16 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from bot import repo, reports
+from bot import profiles, repo, reports
 
 LEVEL_FILL = ["F8D3CD", "FBE7B5", "DCEFC9", "BFE5CC"]   # 0 → 3: красноватый → зелёный
 HEAD_FILL = "F3E3D3"
 THIN = Side(style="thin", color="E2D6CA")
+
+
+def _safe(value):
+    """Текст учителя не должен стать формулой Excel: «=…» пишется как текст."""
+    return "'" + value if isinstance(value, str) and value.startswith("=") else value
 
 
 def _week_title(week: date) -> str:
@@ -82,7 +88,7 @@ def weekly_xlsx(con, groups: list, weeks: list[date]) -> bytes:
                 else:
                     row += [""] * len(questions) + ["", "", "", "нет отчёта"]
                     fills = [None] * len(questions)
-                ws.append(row)
+                ws.append([_safe(v) for v in row])
                 r = ws.max_row
                 for i, v in enumerate(fills):
                     if v is not None:
@@ -95,9 +101,48 @@ def weekly_xlsx(con, groups: list, weeks: list[date]) -> bytes:
             summary.append([_week_title(week), g["name"], g["subject_ru"], teacher["name"] if teacher else "",
                             len(students), done, round(sum(levels) / len(levels)) if levels else "", stars])
 
+    skills_sheet(wb, con, groups)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _rating_fill(v: int) -> str:
+    return LEVEL_FILL[min(3, max(0, (v - 1) * 4 // 10))]
+
+
+def skills_sheet(wb, con, groups: list) -> None:
+    """Лист «Навыки и темы»: последняя оценка по критериям, общий рейтинг, темы."""
+    crit, seen = [], set()
+    for code in sorted({g["subject"] for g in groups}):
+        for c in profiles.criteria_for(con, code):
+            if c["id"] not in seen:
+                seen.add(c["id"])
+                crit.append(c)
+    ws = wb.create_sheet("Навыки и темы")
+    _head(ws, ["Группа", "Ученик", "Дата оценки"] + [c["name_ru"] for c in crit] +
+          ["Общий рейтинг", "Выучил", "Не понял"], [12, 26, 12] + [13] * len(crit) + [10, 40, 40])
+    for g in groups:
+        students = repo.group_students(con, g["id"])
+        ids = [s["id"] for s in students]
+        ratings = profiles.latest_ratings(con, ids, g["subject"])
+        topics = profiles.topics_of(con, ids, g["subject"])
+        for s in students:
+            last = (ratings.get(s["id"]) or [None])[0]
+            tp = topics.get(s["id"], {"learned": [], "unclear": []})
+            values = last["v"] if last else {}
+            avg = profiles.overall(values)
+            row = [g["name"], s["full_name"], last["on"] if last else ""] + \
+                  [values.get(c["id"], "") for c in crit] + \
+                  [avg if avg is not None else "", "; ".join(tp["learned"]), "; ".join(tp["unclear"])]
+            ws.append([_safe(v) for v in row])
+            r = ws.max_row
+            for i, c in enumerate(crit):
+                if values.get(c["id"]):
+                    ws.cell(row=r, column=4 + i).fill = PatternFill("solid", fgColor=_rating_fill(values[c["id"]]))
+            for col in range(1, len(row) + 1):
+                ws.cell(row=r, column=col).border = Border(bottom=THIN)
+                ws.cell(row=r, column=col).alignment = Alignment(vertical="top", wrap_text=True)
 
 
 def filename(prefix: str, week: date) -> str:

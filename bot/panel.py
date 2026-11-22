@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
-from bot import hints, hub, progress, repo, reports, rules, schedule
+from bot import hints, hub, profiles, progress, repo, reports, rules, schedule
 from bot.payload import SEND_DATA_LIMIT, byte_size, encode_param
 from bot.texts import t
 
@@ -22,13 +22,21 @@ TOP = 12
 OWNER_ACTIONS = ("o_remind", "o_summary", "o_backup", "o_export")
 BTN_PANEL = "📊 Панель центра"
 BTN_MENU = "☰ Меню владельца"
-NEED_HELP = ("exam_risk", "drop", "homework", "absent", "late")
+NEED_HELP = ("exam_risk", "drop", "homework", "absent", "late", "unclear")
 
 
 def _level(con, group_id: int, week: date) -> int:
     row = con.execute("SELECT avg(a.value) FROM weekly_answers a JOIN weekly_reports r ON r.id = a.report_id "
                       "WHERE r.group_id = ? AND r.week_start = ?", (group_id, week.isoformat())).fetchone()
     return -1 if row[0] is None else min(9, round(row[0] * 3))
+
+
+def _skills(con, g) -> int:
+    """Средний общий рейтинг учеников группы по последним оценкам ×10 (74 = 7.4), -1 — нет оценок."""
+    ids = [s["id"] for s in repo.group_students(con, g["id"])]
+    vals = [profiles.overall(items[0]["v"]) for items in profiles.latest_ratings(con, ids, g["subject"]).values()]
+    vals = [v for v in vals if v is not None]
+    return round(sum(vals) / len(vals) * 10) if vals else -1
 
 
 def payload(con, today: date) -> dict:
@@ -49,7 +57,7 @@ def payload(con, today: date) -> dict:
         g_rows.append([g["id"], g["name"], t_index.get(g["teacher_id"], -1), g["subject"],
                        g["subject_ru"], g["stage_ru"] or "", n, done, _level(con, g["id"], week),
                        _level(con, g["id"], week - timedelta(weeks=1)), len(open_hints),
-                       timing["exd"], timing["wkn"], timing["wkt"], stars])
+                       timing["exd"], timing["wkn"], timing["wkt"], stars, _skills(con, g)])
         for h in open_hints:
             title, why = hints.parts(con, h, "ru")
             rule = h["rule"].split(":")[0]
@@ -96,7 +104,7 @@ def payload(con, today: date) -> dict:
         "v": 2, "f": "owner", "lang": "ru", "today": today.isoformat(), "wk": week.isoformat(),
         "center": repo.get_setting(con, "center_name"), "att": repo.attendance_on(con),
         "k": [students["n"] or 0, students["c"] or 0, len(groups), len(teachers)],
-        "t": [[t["id"], repo.short_name(t["name"])] for t in teachers],
+        "t": [[t["id"], repo.short_name(t["name"]), 1 if repo.is_support(t) else 0] for t in teachers],
         "g": g_rows, "hist": hist, "grades": grades, "dist": dist,
         "risk": risk[:TOP], "good": good[:TOP],
     }

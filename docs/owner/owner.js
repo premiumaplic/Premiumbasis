@@ -14,7 +14,7 @@
 
   // поля группы в ссылке
   var G = { id: 0, name: 1, tIdx: 2, sc: 3, sj: 4, stage: 5, n: 6, done: 7, lvl: 8, prev: 9, hints: 10,
-            exd: 11, wkn: 12, wkt: 13, stars: 14 };
+            exd: 11, wkn: 12, wkt: 13, stars: 14, skills: 15 };
 
   function mondayISO(back) {
     var d = new Date(), wd = (d.getDay() + 6) % 7;
@@ -22,16 +22,16 @@
   }
   var DEMO = {
     v: 2, f: "owner", lang: "ru", today: SB.localDate(), wk: mondayISO(0), center: "Учебный центр", att: false,
-    k: [96, 81, 8, 4],
-    t: [[1, "Дилноза А."], [2, "Бахтиёр Р."], [3, "Гульнора С."], [4, "Сардор К."]],
-    g: [[1, "10-А", 0, "en", "Английский", "Курс A1", 14, 14, 7, 6, 1, SB.iso(SB.addDays(new Date(), 5)), 7, 8, 2],
-        [2, "Kids-2", 0, "en", "Английский", "Roundup 3", 11, 6, 6, 6, 2, "", 9, 0, 1],
-        [3, "11-Б", 1, "en", "Английский", "Курс B1", 12, 12, 8, 7, 0, SB.iso(SB.addDays(new Date(), 30)), 4, 8, 3],
-        [4, "IELTS-1", 1, "en", "Английский", "IELTS", 9, 3, 6, 7, 3, "", 6, 0, 0],
-        [5, "М-5", 2, "math", "Математика", "5 класс", 13, 13, 5, 4, 1, "", 11, 0, 1],
-        [6, "М-8", 2, "math", "Математика", "8 класс", 12, 9, 6, 6, 0, "", 3, 0, 0],
-        [7, "Рус-1", 3, "ru", "Русский", "", 15, 0, -1, 5, 0, "", 5, 0, 0],
-        [8, "Kor-1", 3, "ko", "Корейский", "", 10, 7, 5, 5, 1, "", 2, 0, 0]],
+    k: [96, 81, 8, 5],
+    t: [[1, "Дилноза А.", 0], [2, "Бахтиёр Р.", 0], [3, "Гульнора С.", 0], [4, "Сардор К.", 0], [5, "Саида К.", 1]],
+    g: [[1, "10-А", 0, "en", "Английский", "Курс A1", 14, 14, 7, 6, 1, SB.iso(SB.addDays(new Date(), 5)), 7, 8, 2, 74],
+        [2, "Kids-2", 0, "en", "Английский", "Roundup 3", 11, 6, 6, 6, 2, "", 9, 0, 1, 61],
+        [3, "11-Б", 1, "en", "Английский", "Курс B1", 12, 12, 8, 7, 0, SB.iso(SB.addDays(new Date(), 30)), 4, 8, 3, 80],
+        [4, "IELTS-1", 1, "en", "Английский", "IELTS", 9, 3, 6, 7, 3, "", 6, 0, 0, 68],
+        [5, "М-5", 2, "math", "Математика", "5 класс", 13, 13, 5, 4, 1, "", 11, 0, 1, 66],
+        [6, "М-8", 2, "math", "Математика", "8 класс", 12, 9, 6, 6, 0, "", 3, 0, 0, -1],
+        [7, "Рус-1", 3, "ru", "Русский", "", 15, 0, -1, 5, 0, "", 5, 0, 0, -1],
+        [8, "Kor-1", 3, "ko", "Корейский", "", 10, 7, 5, 5, 1, "", 2, 0, 0, 58]],
     hist: [[mondayISO(7), 70, 96], [mondayISO(6), 82, 96], [mondayISO(5), 88, 96], [mondayISO(4), 79, 96],
            [mondayISO(3), 91, 96], [mondayISO(2), 93, 96], [mondayISO(1), 95, 96], [mondayISO(0), 64, 96]],
     grades: [40, 160, 310, 230],
@@ -59,7 +59,7 @@
       oByWeeks: "Отчёты по неделям, %", oGrades: "Оценки недели", oInflated: "Почти все ответы «отлично» — возможно, оценки завышены",
       oExams: "Экзамены скоро", oNoExams: "В ближайшие 3 недели экзаменов нет", oInDays: "через {n} дн.", oToday: "сегодня",
       oHelp: "Кому нужна помощь", oPraise: "Кого похвалить", oNobody: "Пока никого",
-      oFilled: "{d} из {n}", oLevel: "уровень", oNoTeacher: "без учителя", oHints: "подсказок: {n}",
+      oFilled: "{d} из {n}", oLevel: "уровень", oSkills: "навыки {v}/10", oSupport: "саппорт · все группы", oNoTeacher: "без учителя", oHints: "подсказок: {n}",
       fAll: "Все", fBehind: "Отстают", fExams: "Экзамены", fHints: "Подсказки",
       oAllGroups: "Все группы", oOnStation: "учеников на станциях", oNoMap: "Нет предметов с картой станций",
       oDataAt: "Данные на момент нажатия кнопки. Чтобы обновить — «🔄 Обновить» в чате.",
@@ -297,13 +297,14 @@
       var b = el("button", "srow");
       b.type = "button";
       var r = SB.ring(p, 56, 6, "lvl-ring " + (p >= 90 ? "lvhi" : p >= 50 ? "lvmid" : "lvlo"));
-      r.appendChild(el("b", "ring-num", p + "%"));
+      r.appendChild(el("b", "ring-num", n ? p + "%" : "—"));
       b.appendChild(r);
       var mid = el("span", "grow");
       mid.appendChild(el("b", "", tc[1]));
       var meta = el("span", "meta");
+      if (tc[2]) meta.appendChild(it("span", "role-chip", "lifebuoy", t("oSupport")));
       meta.appendChild(el("span", "mini-chip", groups.length + " " + t("oGroupsK")));
-      meta.appendChild(el("span", "mini-chip " + (done === n ? "ok" : "todo"), t("oFilled", { d: done, n: n })));
+      if (n) meta.appendChild(el("span", "mini-chip " + (done === n ? "ok" : "todo"), t("oFilled", { d: done, n: n })));
       if (hints) meta.appendChild(it("span", "mini-chip warn", "alert", String(hints)));
       mid.appendChild(meta);
       b.appendChild(mid);
@@ -378,6 +379,7 @@
     if (d !== null && d >= 0) meta.appendChild(it("span", "mini-chip " + (d <= 7 ? "warn" : ""), "cap", d === 0 ? t("oToday") : t("oInDays", { n: d })));
     if (g[G.hints]) meta.appendChild(it("span", "mini-chip warn", "alert", String(g[G.hints])));
     if (g[G.stars]) meta.appendChild(el("span", "mini-chip star", t("oStars", { n: g[G.stars] })));
+    if (g[G.skills] >= 0) meta.appendChild(it("span", "mini-chip", "radar", t("oSkills", { v: (g[G.skills] / 10).toFixed(1) })));
     c.appendChild(meta);
     return c;
   }

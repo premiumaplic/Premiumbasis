@@ -79,6 +79,33 @@ def set_teacher_active(con, actor: int, teacher_id: int, active: bool) -> None:
     audit(con, actor, "teacher_enable" if active else "teacher_disable", f"teacher:{teacher_id}")
 
 
+ROLES = ("teacher", "support")
+
+
+def is_support(teacher) -> bool:
+    """Саппорт-учитель: видит все группы центра и работает в них как учитель."""
+    return teacher is not None and "role" in teacher.keys() and teacher["role"] == "support"
+
+
+def can_teach(teacher, g) -> bool:
+    """Может ли учитель работать с группой: своя группа, а саппорт-учитель — любая активная."""
+    if teacher is None or g is None or not g["active"]:
+        return False
+    return g["teacher_id"] == teacher["id"] or is_support(teacher)
+
+
+def teacher_groups(con, teacher) -> list[Row]:
+    """Группы, в которых учитель работает: свои; у саппорт-учителя — все активные."""
+    return list_groups(con) if is_support(teacher) else list_groups(con, teacher_id=teacher["id"])
+
+
+def set_teacher_role(con, actor: int, teacher_id: int, role: str) -> None:
+    if role not in ROLES:
+        raise ValueError(role)
+    con.execute("UPDATE teachers SET role = ? WHERE id = ?", (role, teacher_id))
+    audit(con, actor, "teacher_role", f"teacher:{teacher_id}", role)
+
+
 def set_teacher_lang(con, actor: int, teacher_id: int, lang: str) -> None:
     con.execute("UPDATE teachers SET lang = ? WHERE id = ?", (lang, teacher_id))
     audit(con, actor, "teacher_lang", f"teacher:{teacher_id}", lang)

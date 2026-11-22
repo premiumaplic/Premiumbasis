@@ -115,19 +115,28 @@ async def menu(cb: CallbackQuery, state: FSMContext, teacher=None) -> None:
 
 # ================================================================ учителя
 
+ROLE_NAMES = {"teacher": "учитель (свои группы)", "support": "саппорт-учитель (все группы центра)"}
+
+
 def teacher_text(con, row) -> str:
     groups = repo.list_groups(con, teacher_id=row["id"])
-    return (f"👩‍🏫 {row['name']}\n"
+    support = repo.is_support(row)
+    return (f"{'🛟' if support else '👩‍🏫'} {row['name']}\n"
             f"Telegram ID: {row['tg_id']}\n"
+            f"Роль: {ROLE_NAMES['support' if support else 'teacher']}\n"
             f"Язык интерфейса: {LANG_NAMES[row['lang']]}\n"
             f"Статус: {'активен' if row['active'] else 'отключён'}\n"
-            f"Группы: {', '.join(g['name'] for g in groups) or 'нет'}")
+            f"Свои группы: {', '.join(g['name'] for g in groups) or 'нет'}" +
+            ("\n\nСаппорт-учитель видит все группы центра (кнопка «🛟 Все группы») и может в любой "
+             "заполнять отчёты, оценивать навыки, темы, экзамены и присылать карточки." if support else ""))
 
 
 def teacher_markup(row) -> object:
     other = "uz" if row["lang"] == "ru" else "ru"
     return kb(
         [(f"🌐 Язык → {LANG_NAMES[other]}", A(act="t_lang", id=row["id"]))],
+        [("👩‍🏫 Сделать обычным учителем" if repo.is_support(row) else "🛟 Сделать саппорт-учителем",
+          A(act="t_role", id=row["id"]))],
         [("⛔ Отключить" if row["active"] else "✅ Включить", A(act="t_toggle", id=row["id"]))],
         [("⬅️ Учителя", A(act="teachers"))],
     )
@@ -136,7 +145,8 @@ def teacher_markup(row) -> object:
 @router.callback_query(A.filter(F.act == "teachers"))
 async def teachers(cb: CallbackQuery, con) -> None:
     rows = repo.list_teachers(con)
-    buttons = [(f"{'✅' if r['active'] else '⛔'} {r['name']}", A(act="teacher", id=r["id"])) for r in rows]
+    buttons = [(f"{'✅' if r['active'] else '⛔'}{'🛟' if repo.is_support(r) else ''} {r['name']}",
+                A(act="teacher", id=r["id"])) for r in rows]
     await show(cb, f"Учителя ({len(rows)}). Нажмите на учителя, чтобы изменить.",
                kb(*column(buttons, 2), [("➕ Добавить учителя", A(act="t_add"))], [("⬅️ Меню", A(act="menu"))]))
 
@@ -153,6 +163,18 @@ async def teacher_lang(cb: CallbackQuery, callback_data: A, con) -> None:
     repo.set_teacher_lang(con, cb.from_user.id, row["id"], "uz" if row["lang"] == "ru" else "ru")
     row = repo.teacher(con, row["id"])
     await show(cb, teacher_text(con, row), teacher_markup(row))
+
+
+@router.callback_query(A.filter(F.act == "t_role"))
+async def teacher_role(cb: CallbackQuery, callback_data: A, con) -> None:
+    row = repo.teacher(con, callback_data.id)
+    if row is None:
+        return await cb.answer("Учитель не найден", show_alert=True)
+    repo.set_teacher_role(con, cb.from_user.id, row["id"], "teacher" if repo.is_support(row) else "support")
+    row = repo.teacher(con, row["id"])
+    note = ("\n\n✅ Готово. Пусть учитель нажмёт /start или «🔄 Обновить» — появится кнопка «🛟 Все группы»."
+            if repo.is_support(row) else "\n\n✅ Готово. Теперь учитель видит только свои группы.")
+    await show(cb, teacher_text(con, row) + note, teacher_markup(row))
 
 
 @router.callback_query(A.filter(F.act == "t_toggle"))
@@ -812,6 +834,7 @@ SETTINGS = {
     "hint_exam_weeks": ("Подсказка: за сколько недель до экзамена проверять риск", "int:1:8"),
     "hint_growth_weeks": ("Похвала: недель роста подряд", "int:2:8"),
     "attendance_on": ("Посещаемость в боте", "bool"),   # новые настройки — в конец (номера кнопок не меняются)
+    "hint_unclear_topics": ("Подсказка: со скольких непонятных тем у ученика", "int:1:20"),
 }
 WEEKDAY_FULL = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 
