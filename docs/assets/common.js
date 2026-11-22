@@ -815,7 +815,10 @@
     var size = opts.size || 260, max = opts.max || 10, n = labels.length;
     var pad = opts.labels === false ? 10 : 46, cx = size / 2, cy = size / 2, R = size / 2 - pad;
     var box = el("div", "radar" + (opts.cls ? " " + opts.cls : ""));
-    var s = svg("svg", { viewBox: "0 0 " + size + " " + size, width: "100%", role: "img" });
+    // рамка по содержимому: над и под шестиугольником — только место для подписей
+    var top = opts.labels === false ? 0 : Math.max(0, cy - R * 1.17 - 16);
+    var hgt = opts.labels === false ? size : Math.min(size, 2 * R * 1.17 + 30);
+    var s = svg("svg", { viewBox: "0 " + top.toFixed(1) + " " + size + " " + hgt.toFixed(1), width: "100%", role: "img" });
     var pt = function (i, v) {
       var a = -Math.PI / 2 + i * 2 * Math.PI / n, r = R * Math.max(0, Math.min(max, v)) / max;
       return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
