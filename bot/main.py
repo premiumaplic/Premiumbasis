@@ -45,6 +45,19 @@ def open_database():
     return con
 
 
+async def set_description(bot: Bot) -> None:
+    """Описание бота (до «Старт») на русском и узбекском — только если владелец не задал своё."""
+    from bot.texts import BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION
+    for lang, code in (("ru", None), ("uz", "uz")):
+        try:
+            if not (await bot.get_my_description(language_code=code)).description:
+                await bot.set_my_description(description=BOT_DESCRIPTION[lang], language_code=code)
+            if not (await bot.get_my_short_description(language_code=code)).short_description:
+                await bot.set_my_short_description(short_description=BOT_SHORT_DESCRIPTION[lang], language_code=code)
+        except TelegramAPIError as e:
+            log.info("Описание бота не обновлено: %s", type(e).__name__)
+
+
 async def run(conf: cfg.Config) -> None:
     clean_tmp()
     con = open_database()
@@ -58,6 +71,7 @@ async def run(conf: cfg.Config) -> None:
                                BotCommand(command="myid", description="Мой Telegram ID"),
                                BotCommand(command="cancel", description="Отменить ввод")])
     # /backup и /summary — команды владельца, в общий список не выносим
+    await set_description(bot)
     if conf.owner_id:
         try:
             from bot import __version__

@@ -6,8 +6,14 @@
 
 TEXTS = {
     "no_access": {
-        "ru": "Нет доступа.\nВаш Telegram ID: {id}\nПередайте этот номер владельцу центра.",
-        "uz": "Ruxsat yoʻq.\nSizning Telegram ID raqamingiz: {id}\nUshbu raqamni markaz egasiga yuboring.",
+        "ru": "👋 Здравствуйте! Это закрытый бот учебного центра — он помогает учителям вести "
+              "отчёты об учениках.\n\n"
+              "🔒 Нет доступа. Ваш Telegram ID: {id}\n"
+              "Передайте этот номер владельцу центра — он добавит вас, и тогда нажмите /start.",
+        "uz": "👋 Assalomu alaykum! Bu oʻquv markazining yopiq boti — oʻqituvchilarga oʻquvchilar "
+              "boʻyicha hisobot yuritishda yordam beradi.\n\n"
+              "🔒 Ruxsat yoʻq. Sizning Telegram ID raqamingiz: {id}\n"
+              "Ushbu raqamni markaz egasiga yuboring — u sizni qoʻshadi, keyin /start ni bosing.",
     },
     "my_id": {
         "ru": "Ваш Telegram ID: {id}",
@@ -18,8 +24,10 @@ TEXTS = {
         "uz": "Assalomu alaykum, {name}! Guruhni tanlang:",
     },
     "no_groups": {
-        "ru": "Здравствуйте, {name}! У вас пока нет групп. Обратитесь к владельцу центра.",
-        "uz": "Assalomu alaykum, {name}! Sizda hozircha guruh yoʻq. Markaz egasiga murojaat qiling.",
+        "ru": "👋 Здравствуйте, {name}!\n\nВам пока не назначена ни одна группа. Попросите владельца "
+              "центра добавить вас в группу — и нажмите /start ещё раз.",
+        "uz": "👋 Assalomu alaykum, {name}!\n\nSizga hali birorta guruh biriktirilmagan. Markaz egasidan "
+              "sizni guruhga qoʻshishni soʻrang — va /start ni yana bosing.",
     },
     "group_chosen": {
         "ru": "{header}\n\nОткройте журнал группы кнопкой внизу, под полем ввода.",
@@ -180,14 +188,24 @@ TEXTS = {
     "btn_refresh": {"ru": "🔄 Обновить", "uz": "🔄 Yangilash"},
     "hub_placeholder": {"ru": "Откройте журнал группы кнопкой ниже", "uz": "Guruh jurnalini pastdagi tugma bilan oching"},
     "hub_hello": {
-        "ru": "Здравствуйте, {name}! Нажмите кнопку с группой внизу — откроется журнал группы: "
-              "недельный отчёт, ученики и их профили, навыки и темы, карта станций, итоги, экзамен, тема, подсказки "
-              "и карточки для родителей.\n\n"
-              "Если кнопок не видно — нажмите значок клавиатуры справа в строке ввода.",
-        "uz": "Assalomu alaykum, {name}! Pastdagi guruh tugmasini bosing — guruh jurnali ochiladi: "
-              "haftalik hisobot, oʻquvchilar va ularning profillari, koʻnikmalar va mavzular, bosqichlar xaritasi, natijalar, imtihon, mavzu, "
-              "maslahatlar va ota-onalar uchun kartalar.\n\n"
-              "Tugmalar koʻrinmasa — yozish maydonining oʻngidagi klaviatura belgisini bosing.",
+        "ru": "👋 Здравствуйте, {name}!\n\n"
+              "Это SchoolBot — журнал ваших групп прямо в Telegram.\n\n"
+              "📝 Недельный отчёт — пара минут на группу\n"
+              "🎯 Навыки и темы — рейтинг по 6 критериям, что выучено и что непонятно\n"
+              "👤 Профиль ученика — рост по неделям и подсказки, кому нужна помощь\n"
+              "🗺 Карта станций, 🎓 экзамены и 📚 тема урока\n"
+              "💌 Карточки для родителей — бот рисует их сам\n\n"
+              "👇 Откройте журнал кнопкой с группой под полем ввода.\n"
+              "Кнопок не видно — нажмите значок клавиатуры ⌨️ справа в строке ввода.",
+        "uz": "👋 Assalomu alaykum, {name}!\n\n"
+              "Bu SchoolBot — guruhlaringiz jurnali toʻgʻridan-toʻgʻri Telegramda.\n\n"
+              "📝 Haftalik hisobot — guruh uchun bir necha daqiqa\n"
+              "🎯 Koʻnikmalar va mavzular — 6 mezon boʻyicha reyting, nima oʻzlashtirildi va nima tushunilmadi\n"
+              "👤 Oʻquvchi profili — haftalar boʻyicha oʻsish va kimga yordam kerakligi\n"
+              "🗺 Bosqichlar xaritasi, 🎓 imtihonlar va 📚 dars mavzusi\n"
+              "💌 Ota-onalar uchun kartalar — bot ularni oʻzi chizadi\n\n"
+              "👇 Jurnalni yozish maydoni ostidagi guruh tugmasi bilan oching.\n"
+              "Tugmalar koʻrinmasa — yozish maydonining oʻngidagi klaviatura belgisini ⌨️ bosing.",
     },
     "hub_refreshed": {"ru": "Кнопки обновлены.", "uz": "Tugmalar yangilandi."},
     "hints_closed_n": {"ru": "Закрыто подсказок: {n}.", "uz": "Yopilgan maslahatlar: {n}."},
@@ -218,3 +236,27 @@ def t(key: str, lang: str = "ru", **kwargs) -> str:
 
 def all_variants(key: str) -> set[str]:
     return set(TEXTS[key].values())
+
+
+# Описание бота в Telegram (видно до нажатия «Старт»). Бот ставит его сам при запуске,
+# только если описание пустое — то, что владелец задал в @BotFather, не перезаписывается.
+BOT_DESCRIPTION = {
+    "ru": ("SchoolBot — журнал учебного центра в Telegram.\n\n"
+           "📝 Недельные отчёты за пару минут\n"
+           "🎯 Навыки по 6 критериям и темы учеников\n"
+           "💌 Карточки-отчёты для родителей\n"
+           "💡 Подсказки, кому нужна помощь\n\n"
+           "Бот закрытый — только для учителей центра. Нажмите «Старт»: бот покажет ваш "
+           "Telegram ID, передайте его владельцу центра."),
+    "uz": ("SchoolBot — oʻquv markazining Telegramdagi jurnali.\n\n"
+           "📝 Haftalik hisobotlar bir necha daqiqada\n"
+           "🎯 6 mezon boʻyicha koʻnikmalar va oʻquvchilar mavzulari\n"
+           "💌 Ota-onalar uchun hisobot-kartalar\n"
+           "💡 Kimga yordam kerakligi boʻyicha maslahatlar\n\n"
+           "Bot yopiq — faqat markaz oʻqituvchilari uchun. «Start»ni bosing: bot Telegram ID "
+           "raqamingizni koʻrsatadi, uni markaz egasiga yuboring."),
+}
+BOT_SHORT_DESCRIPTION = {
+    "ru": "Журнал учебного центра: недельные отчёты, навыки учеников и карточки для родителей.",
+    "uz": "Oʻquv markazi jurnali: haftalik hisobotlar, oʻquvchilar koʻnikmalari va ota-onalar uchun kartalar.",
+}

@@ -92,7 +92,7 @@ def test_teacher_sees_only_own_groups(chat, con):
     foreign = make_group(con, "11-Б", teacher_id=other)
     calls = run(chat.send(TEACHER_TG, "/start"))
     reply = calls[-1]
-    assert "Нажмите кнопку с группой внизу" in reply.text
+    assert "журнал ваших групп" in reply.text and "кнопкой с группой под полем ввода" in reply.text
     keyboard = [b for row in reply.reply_markup.keyboard for b in row]
     apps = [b for b in keyboard if b.web_app]
     assert [b.text for b in apps] == ["📱 10-А · Английский"]                 # только своя группа
@@ -536,7 +536,7 @@ def test_owner_makes_support_teacher_who_works_in_any_group(chat, con):
     sup = make_teacher(con, 600005, "Саида Каримова")
     # обычный учитель без групп кнопки «Все группы» не видит
     calls = run(chat.send(600005, "/start"))
-    assert "нет групп" in last_text(calls) and "🛟 Все группы" not in _reply_buttons(calls)
+    assert "не назначена ни одна группа" in last_text(calls) and "🛟 Все группы" not in _reply_buttons(calls)
     alerts = [c.text for c in run(chat.press(600005, f"t:sgroup:{gid}")) if type(c).__name__ == "AnswerCallbackQuery"]
     assert alerts == ["Эта группа вам не назначена."]
     assert repo.teacher(con, sup)["current_group_id"] is None
@@ -562,3 +562,34 @@ def test_owner_makes_support_teacher_who_works_in_any_group(chat, con):
     calls = _form(chat, 600005, {"t": "pf", "g": gid, "c": cids, "r": [[sid, [5] * 6, [], [], []]]})
     assert "не назначена" in last_text(calls)
     assert "🛟 Все группы" not in _reply_buttons(run(chat.send(600005, "/start")))
+
+
+def test_bot_description_set_only_when_empty():
+    from types import SimpleNamespace
+    from bot import main as main_mod
+    from bot.texts import BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION
+
+    class FakeBot:
+        def __init__(self, current):
+            self.current, self.set = current, []
+
+        async def get_my_description(self, language_code=None):
+            return SimpleNamespace(description=self.current)
+
+        async def get_my_short_description(self, language_code=None):
+            return SimpleNamespace(short_description=self.current)
+
+        async def set_my_description(self, description, language_code=None):
+            self.set.append(("d", language_code))
+
+        async def set_my_short_description(self, short_description, language_code=None):
+            self.set.append(("s", language_code))
+
+    empty = FakeBot("")
+    run(main_mod.set_description(empty))
+    assert empty.set == [("d", None), ("s", None), ("d", "uz"), ("s", "uz")]
+    own = FakeBot("Описание владельца")
+    run(main_mod.set_description(own))
+    assert own.set == []          # своё описание владельца не перезаписывается
+    assert all(len(x) <= 512 for x in BOT_DESCRIPTION.values())
+    assert all(len(x) <= 120 for x in BOT_SHORT_DESCRIPTION.values())
