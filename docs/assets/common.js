@@ -734,6 +734,53 @@
     return box;
   }
 
+  // Знак центра (пути сгенерированы из bot/logo.py — менять там, затем перенести сюда)
+  var LOGO = {
+      "outer": "M512 184L796 348L796 676L512 840L227.9 676L227.9 348ZM538 212L796 361L796 663L538 812L278.2 662L278.2 362Z",
+      "middle": "M538 212L796 361L796 663L538 812L278.2 662L278.2 362ZM564 239.5L796 373.4L796 650.6L564 784.5L328 648.2L328 375.8Z",
+      "arm-l": "M436 349L466 376L430 417L521 519L510 622L462 677L479 532L375 417Z",
+      "arm-r": "M692 349L662 376L698 417L607 519L618 622L666 677L649 532L753 417Z",
+      "board": "M564 347L633 378L564 408L495 378Z",
+      "head": "M518 397L564 417L610 397L610 443L564 469L518 443Z",
+      "tassel": "M630 378L636 378L636 412L630 412ZM627 408L638 408L638 431L627 431Z",
+      "tie": "M552 514L576 514L573 535L555 535ZM556 540L572 540L583 657L564 693L545 657Z"
+  };
+
+  // Знак как inline-SVG: цвета берутся из CSS (светлая и тёмная тема), части можно анимировать
+  function logo(cls) {
+    var box = el("span", "logo" + (cls ? " " + cls : ""));
+    box.setAttribute("aria-hidden", "true");
+    var s = svg("svg", { viewBox: "162 162 700 700" });
+    Object.keys(LOGO).forEach(function (k) {
+      s.appendChild(svg("path", { d: LOGO[k], "fill-rule": "evenodd", "class": "lg-" + k }));
+    });
+    box.appendChild(s);
+    return box;
+  }
+
+  // Заставка при входе: знак собирается (шестиугольники, фигура, шапочка, галстук) и уходит.
+  // Полная версия — один раз в день, дальше короткая (полсекунды). Нажатие — пропустить.
+  // При «Уменьшить движение» заставки нет.
+  function splash(caption) {
+    if (reduced || document.querySelector(".splash")) return;
+    var today = SB.localDate(), full = false;
+    try { full = localStorage.getItem("sb:splash") !== today; localStorage.setItem("sb:splash", today); }
+    catch (e) { full = true; }
+    var box = el("div", "splash" + (full ? "" : " quick"));
+    box.appendChild(logo("splash-logo"));
+    if (caption && full) box.appendChild(el("div", "splash-cap", caption));
+    document.body.appendChild(box);
+    var gone = false;
+    var hide = function () {
+      if (gone) return;
+      gone = true;
+      box.classList.add("out");
+      setTimeout(function () { box.remove(); }, 320);
+    };
+    box.addEventListener("click", hide);
+    setTimeout(hide, full ? 1500 : 520);
+  }
+
   // ---------------------------------------------------------------- движение
 
   // Смена экрана: dir — "push" (вглубь), "pop" (назад), "tab" (вкладка), "none" (без анимации).
@@ -919,7 +966,7 @@
   }
 
   var ui = {
-    icon: icon, transition: transition, bump: bump, tween: tween, radar: radar, sheet: sheet, ago: ago,
+    icon: icon, logo: logo, splash: splash, transition: transition, bump: bump, tween: tween, radar: radar, sheet: sheet, ago: ago,
     addTexts: addTexts, ring: ring, sparkline: sparkline, countUp: countUp, confetti: confetti, mascot: mascot,
     plural: plural, reduced: reduced, svg: svg,
     tgo: tgo, inTg: inTg, t: t, setLang: setLang, lang: function () { return lang; },

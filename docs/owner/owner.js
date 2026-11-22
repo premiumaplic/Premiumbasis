@@ -49,7 +49,7 @@
 
   SB.addTexts({
     ru: {
-      oOverview: "Обзор", oTeachers: "Учителя", oGroups: "Группы", oStations: "Станции",
+      oTitle: "Панель центра", oOverview: "Обзор", oTeachers: "Учителя", oGroups: "Группы", oStations: "Станции",
       oCenter: "Панель центра", oWeek: "Неделя {w}", oReports: "отчёты недели",
       oStudents: "учеников", oConsent: "с согласием", oGroupsK: "групп", oTeachersK: "учителей",
       oActions: "Команды боту", oRemind: "Напомнить учителям", oRemindSub: "у кого есть незаполненные отчёты",
@@ -96,7 +96,10 @@
   }
   function head(box, title) {
     var h = el("div", "tabhead");
-    h.appendChild(el("h1", "", title));
+    var tr = el("div", "title-row");
+    tr.appendChild(SB.logo());
+    tr.appendChild(el("h1", "", title));
+    h.appendChild(tr);
     if (D.center) h.appendChild(el("span", "group-chip", D.center));
     box.appendChild(h);
   }
@@ -419,6 +422,7 @@
     D.risk = D.risk || []; D.good = D.good || [];
     demo = isDemo;
     SB.demoMode = isDemo;
+    SB.splash(D.center || t("oTitle"));
     var startTab = (/[?&]tab=(\w+)/.exec(location.search) || [])[1];
     go(["home", "teachers", "groups", "stations"].indexOf(startTab) >= 0 ? startTab : "home");
   });

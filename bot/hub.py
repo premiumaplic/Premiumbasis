@@ -102,6 +102,7 @@ def payload(con, g, lang: str, today: date, teacher=None) -> dict:
         "stg": stations(con, g["subject"], lang) if g["has_map"] else [],
         "gs": g["stage_id"] or 0,
         "tl": profiles.topic_log(con, g["id"]),
+        "cn": repo.get_setting(con, "center_name"),
         # саппорт-учитель в чужой группе: показать, чья это группа
         "rl": 1 if teacher is not None and g["teacher_id"] != teacher["id"] else 0,
         "tn": repo.short_name(g["teacher_name"]) if g["teacher_name"] else "",

@@ -171,7 +171,7 @@
           [11, "CEFR", "Экзамен CEFR", "Подготовка и сдача CEFR", "c", 0, 3],
           [12, "Pre-IELTS", "Экзамен IELTS", "Формат экзамена IELTS", "i", 0, 2],
           [13, "IELTS", "Экзамен IELTS", "Подготовка и сдача IELTS", "i", 0, 3]],
-    gs: 6,
+    gs: 6, cn: "Учебный центр",
     tl: ["Unit 5. Present Simple", "Unit 4. My family", "Unit 3. Numbers 1–100", "Артикли a / an / the"],
     rl: 0, tn: "",
     cr: [[1, "Listening · Аудирование"], [2, "Reading · Чтение"], [3, "Writing · Письмо"],
@@ -461,6 +461,10 @@
   function homeTab() {
     var box = screen("home");
     var done = doneCount(), total = hub.st.length;
+    var brand = el("div", "brand");
+    brand.appendChild(SB.logo());
+    brand.appendChild(el("span", "", hub.cn || t("journal")));
+    box.appendChild(brand);
     var hintsBad = (hub.hn || []).filter(function (h) { return h[4] !== "growth"; });
 
     // ---- шапка: группа, неделя, экзамен, кольцо отчётов
@@ -1974,6 +1978,7 @@
     hub.wk = hub.wk || { q: [], a: {}, c: {}, sr: {} };
     demo = isDemo;
     SB.demoMode = isDemo;
+    SB.splash(hub.cn || t("journal"));
     hub.pf = hub.pf || {};
     hub.cr = hub.cr || [];
     pfLoadDraft();

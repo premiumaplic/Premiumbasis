@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from bot import progress, reports, repo, rules, schedule
+from bot import logo, progress, repo, reports, rules, schedule
 
 W, H = 1080, 1350
 M = 56  # поля
@@ -514,7 +514,9 @@ def _render(data: CardData, level: int) -> tuple[bytes, int]:
 
     # ---- 1. шапка: имя крупно (защита от ошибки пересылки)
     y = 36
-    draw.text((M, y), _fit(draw, data.center or "", font(800, 27), inner // 2), font=font(800, 27), fill=C["accent_dark"])
+    logo.draw(img, M - 6, y - 11, 54, "light")         # знак центра
+    draw.text((M + 56, y), _fit(draw, data.center or "", font(800, 27), inner // 2 - 56), font=font(800, 27),
+              fill=C["accent_dark"])
     draw.text((W - M, y), tx["week"].format(d=data.week_text), font=font(800, 27), fill=C["muted"], anchor="ra")
     y += 42
     size = 58 if tight else 66

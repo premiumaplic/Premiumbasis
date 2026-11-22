@@ -1098,3 +1098,54 @@ body.with-tabs.has-save:not(.in-form) main { padding-bottom: 170px; }
 /* панель центра: своё нижнее меню без бегунка — полоска над активной вкладкой */
 .tabbar > .tab.active::before { content: ""; position: absolute; top: -7px; left: 30%; right: 30%; height: 3px;
                                 border-radius: 0 0 3px 3px; background: var(--accent); animation: fadeIn var(--d-m) var(--ease); }
+
+/* ================= знак центра и заставка ================= */
+:root { --logo-ink: #161616; --logo-accent: #F5660A; --logo-tie: #F5660A; }
+html[data-theme="dark"] { --logo-ink: #ffffff; }
+.logo { display: inline-flex; flex: none; width: 28px; height: 28px; }
+.logo svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.lg-outer, .lg-arm-l, .lg-arm-r, .lg-board, .lg-head, .lg-tassel { fill: var(--logo-ink); }
+.lg-middle { fill: var(--logo-accent); }
+.lg-tie { fill: var(--logo-tie); }
+
+.splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 18px; background: var(--bg); cursor: pointer;
+          transition: opacity 280ms var(--ease-out); }
+.splash-logo { width: 136px; height: 136px; transition: transform 300ms var(--ease-out); }
+.splash-cap { font-size: 15px; font-weight: 800; color: var(--muted); letter-spacing: 0.3px;
+              animation: rise 420ms var(--ease-in) 820ms both; }
+.splash.out { opacity: 0; pointer-events: none; }
+.splash.out .splash-logo { transform: scale(1.06); }
+.splash path { transform-box: fill-box; transform-origin: 50% 50%; }
+/* шестиугольники разворачиваются из центра, средний — с задержкой */
+.splash .lg-outer { animation: lgHex 560ms var(--ease-in) both; }
+.splash .lg-middle { animation: lgHex 560ms var(--ease-in) 90ms both; }
+/* руки поднимаются от плеч */
+.splash .lg-arm-l { transform-origin: 100% 52%; animation: lgArmL 460ms var(--ease-spring) 300ms both; }
+.splash .lg-arm-r { transform-origin: 0% 52%; animation: lgArmR 460ms var(--ease-spring) 300ms both; }
+.splash .lg-head { animation: lgPop 320ms var(--ease-spring) 380ms both; }
+/* шапочка падает сверху и садится, кисточка качается */
+.splash .lg-board { animation: lgDrop 520ms var(--ease-spring) 540ms both; }
+.splash .lg-tassel { transform-origin: 50% 0%; animation: lgSwing 760ms var(--ease) 640ms both; }
+.splash .lg-tie { transform-origin: 50% 0%; animation: lgTie 380ms var(--ease-in) 620ms both; }
+/* короткая версия: всё вместе и быстро */
+.splash.quick path { animation-duration: 300ms !important; animation-delay: 0ms !important; }
+.splash.quick .lg-outer, .splash.quick .lg-middle { animation-name: lgFade; }
+
+@keyframes lgHex { from { opacity: 0; transform: scale(0.7) rotate(-60deg); } to { opacity: 1; transform: none; } }
+@keyframes lgFade { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes lgArmL { from { opacity: 0; transform: rotate(38deg) translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes lgArmR { from { opacity: 0; transform: rotate(-38deg) translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes lgPop { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: none; } }
+@keyframes lgDrop { from { opacity: 0; transform: translateY(-160%) rotate(-14deg); } to { opacity: 1; transform: none; } }
+@keyframes lgSwing { 0% { opacity: 0; transform: rotate(28deg); } 35% { opacity: 1; transform: rotate(-16deg); }
+                     65% { transform: rotate(7deg); } 85% { transform: rotate(-3deg); } 100% { opacity: 1; transform: none; } }
+@keyframes lgTie { from { opacity: 0; transform: scaleY(0); } to { opacity: 1; transform: none; } }
+
+/* знак в интерфейсе */
+.brand { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.brand .logo { width: 24px; height: 24px; }
+.tabhead .logo { width: 30px; height: 30px; margin-right: 2px; }
+.tabhead .title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.landing-logo { display: block; margin: 18px 0 8px; }
+.landing-logo img { display: block; width: 88px; height: 88px; }
