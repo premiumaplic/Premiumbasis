@@ -27,14 +27,9 @@ router.callback_query.filter(OwnerOnly())
 CANCEL = [("✖️ Отмена", A(act="cancel"))]
 
 OWNER_HELLO = (
-    "👋 Добро пожаловать в SchoolBot!\n\n"
-    "Бот ведёт отчёты вашего учебного центра:\n"
-    "📝 учителя заполняют недельные отчёты и оценивают навыки учеников\n"
-    "💌 бот рисует карточки для родителей\n"
-    "💡 подсказывает, кому из учеников нужна помощь\n"
-    "🔒 хранит зашифрованные резервные копии базы\n\n"
-    "📊 Панель центра — кнопка под полем ввода: итоги недели, учителя, группы, станции учеников.\n"
-    "☰ Меню владельца — ниже: учителя, группы, ученики, настройки."
+    "Здравствуйте.\n\n"
+    "Панель центра открывается кнопкой под строкой ввода: итоги недели, учителя, группы, станции учеников.\n"
+    "Учителя, группы, ученики, настройки и тексты находятся в меню ниже."
 )
 
 
@@ -100,7 +95,7 @@ def menu_markup(teacher) -> object:
 @router.message(Command("admin"))
 async def start(message: Message, state: FSMContext, con, conf, teacher=None) -> None:
     await state.clear()
-    await message.answer(OWNER_HELLO + ("\n📚 Там же — ваши группы как учителя." if teacher else ""),
+    await message.answer(OWNER_HELLO + ("\nКнопки ваших групп как учителя тоже находятся под строкой ввода." if teacher else ""),
                          reply_markup=panel.keyboard(con, conf, teacher))
     await message.answer("Меню владельца. Что настроить?", reply_markup=menu_markup(teacher))
 

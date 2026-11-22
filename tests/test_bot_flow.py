@@ -16,7 +16,7 @@ def run(coro):
 def test_stranger_gets_no_access_and_id(chat):
     calls = run(chat.send(STRANGER, "/start"))
     text = last_text(calls)
-    assert "Нет доступа" in text and str(STRANGER) in text and "Ruxsat yoʻq" in text
+    assert "только у сотрудников" in text and str(STRANGER) in text and "xizmat boti" in text
     assert "999001" in last_text(run(chat.send(STRANGER, "/myid")))
     # никакие кнопки владельца не срабатывают
     calls = run(chat.press(STRANGER, "a:groups:0:0"))
@@ -92,7 +92,7 @@ def test_teacher_sees_only_own_groups(chat, con):
     foreign = make_group(con, "11-Б", teacher_id=other)
     calls = run(chat.send(TEACHER_TG, "/start"))
     reply = calls[-1]
-    assert "журнал ваших групп" in reply.text and "кнопкой с группой под полем ввода" in reply.text
+    assert "журнал ваших групп" in reply.text and "кнопку с названием группы" in reply.text
     keyboard = [b for row in reply.reply_markup.keyboard for b in row]
     apps = [b for b in keyboard if b.web_app]
     assert [b.text for b in apps] == ["📱 10-А · Английский"]                 # только своя группа
@@ -114,7 +114,7 @@ def test_teacher_sees_only_own_groups(chat, con):
 def test_disabled_teacher_loses_access(chat, con):
     tid = make_teacher(con, TEACHER_TG)
     repo.set_teacher_active(con, OWNER, tid, False)
-    assert "Нет доступа" in last_text(run(chat.send(TEACHER_TG, "/start")))
+    assert "только у сотрудников" in last_text(run(chat.send(TEACHER_TG, "/start")))
 
 
 def test_rate_limit_ignores_flood(chat, con):
@@ -149,7 +149,7 @@ def test_stranger_form_data_is_ignored(chat, con):
     msg = chat._msg(STRANGER, web_app_data={"data": '{"v":1}', "button_text": "x"})
     start = len(chat.session.calls)
     run(chat.dp.feed_update(chat.bot, Update(update_id=99, message=msg)))
-    assert "Нет доступа" in chat.session.calls[start:][-1].text
+    assert "только у сотрудников" in chat.session.calls[start:][-1].text
     assert con.execute("SELECT count(*) FROM attendance").fetchone()[0] == 0
 
 
@@ -536,7 +536,7 @@ def test_owner_makes_support_teacher_who_works_in_any_group(chat, con):
     sup = make_teacher(con, 600005, "Саида Каримова")
     # обычный учитель без групп кнопки «Все группы» не видит
     calls = run(chat.send(600005, "/start"))
-    assert "не назначена ни одна группа" in last_text(calls) and "🛟 Все группы" not in _reply_buttons(calls)
+    assert "не закреплено ни одной группы" in last_text(calls) and "🛟 Все группы" not in _reply_buttons(calls)
     alerts = [c.text for c in run(chat.press(600005, f"t:sgroup:{gid}")) if type(c).__name__ == "AnswerCallbackQuery"]
     assert alerts == ["Эта группа вам не назначена."]
     assert repo.teacher(con, sup)["current_group_id"] is None
@@ -591,5 +591,9 @@ def test_bot_description_set_only_when_empty():
     own = FakeBot("Описание владельца")
     run(main_mod.set_description(own))
     assert own.set == []          # своё описание владельца не перезаписывается
+    from bot.texts import OLD_DESCRIPTIONS
+    stale = FakeBot(next(iter(OLD_DESCRIPTIONS)))
+    run(main_mod.set_description(stale))
+    assert len(stale.set) == 4    # текст прошлой версии заменяется
     assert all(len(x) <= 512 for x in BOT_DESCRIPTION.values())
     assert all(len(x) <= 120 for x in BOT_SHORT_DESCRIPTION.values())

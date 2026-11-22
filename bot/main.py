@@ -46,13 +46,15 @@ def open_database():
 
 
 async def set_description(bot: Bot) -> None:
-    """Описание бота (до «Старт») на русском и узбекском — только если владелец не задал своё."""
-    from bot.texts import BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION
+    """Описание бота на русском и узбекском: если пустое или от прошлой версии (своё владельца не трогаем)."""
+    from bot.texts import BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION, OLD_DESCRIPTIONS
     for lang, code in (("ru", None), ("uz", "uz")):
         try:
-            if not (await bot.get_my_description(language_code=code)).description:
+            current = (await bot.get_my_description(language_code=code)).description
+            if (not current or current in OLD_DESCRIPTIONS) and current != BOT_DESCRIPTION[lang]:
                 await bot.set_my_description(description=BOT_DESCRIPTION[lang], language_code=code)
-            if not (await bot.get_my_short_description(language_code=code)).short_description:
+            current = (await bot.get_my_short_description(language_code=code)).short_description
+            if (not current or current in OLD_DESCRIPTIONS) and current != BOT_SHORT_DESCRIPTION[lang]:
                 await bot.set_my_short_description(short_description=BOT_SHORT_DESCRIPTION[lang], language_code=code)
         except TelegramAPIError as e:
             log.info("Описание бота не обновлено: %s", type(e).__name__)
